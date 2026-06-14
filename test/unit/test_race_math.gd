@@ -20,4 +20,16 @@ func _initialize() -> void:
 
 	h.assert_eq(R.format_row(1, "gen-6M", 20.9), "1. gen-6M  20.9 m", "row format")
 
+	# Countdown to the next generation switch (frames remaining -> whole seconds, rounded up).
+	h.assert_eq(R.countdown_seconds(4000, 60), 67, "4000 frames @60fps rounds up to 67s")
+	h.assert_eq(R.countdown_seconds(60, 60), 1, "exactly one second")
+	h.assert_eq(R.countdown_seconds(1, 60), 1, "any remaining frame is >=1s")
+	h.assert_eq(R.countdown_seconds(0, 60), 0, "no frames left -> 0s")
+	h.assert_eq(R.countdown_seconds(-5, 60), 0, "past the deadline clamps to 0s")
+	h.assert_eq(R.countdown_seconds(120, 0), 0, "non-positive tick rate -> 0s (no divide-by-zero)")
+
+	# "Now playing" banner for the active generation.
+	h.assert_eq(R.format_now(2, 3, "gen-2.5M", 12.3, 41),
+		"▶ gen-2.5M  (2/3)  reach 12.3 m  ·  next in 41s", "now-playing banner")
+
 	h.finish(self)

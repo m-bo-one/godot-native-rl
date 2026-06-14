@@ -30,3 +30,16 @@ static func finished(distance: float, finish_z: float) -> bool:
 # Format a one-line leaderboard row. Pure (display helper, kept testable).
 static func format_row(place: int, label: String, distance: float) -> String:
 	return "%d. %s  %.1f m" % [place, label, distance]
+
+# Whole seconds until the next generation switch, rounded UP so a partial second still reads >=1
+# while frames remain. Clamps to 0 at/after the deadline and guards a non-positive tick rate. Pure.
+static func countdown_seconds(frames_left: int, ticks_per_second: int) -> int:
+	if frames_left <= 0 or ticks_per_second <= 0:
+		return 0
+	return int(ceil(float(frames_left) / float(ticks_per_second)))
+
+# "Now playing" banner for the active generation: which net is running, its position in the lineup,
+# how far it has reached, and a live countdown to the auto-switch. Pure (display helper). Makes the
+# automatic generation cycling unmistakable — the fix for "it shows 500k only / never switches".
+static func format_now(index_1based: int, total: int, label: String, reach_m: float, seconds_left: int) -> String:
+	return "▶ %s  (%d/%d)  reach %.1f m  ·  next in %ds" % [label, index_1based, total, reach_m, seconds_left]
