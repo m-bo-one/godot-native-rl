@@ -74,15 +74,28 @@ func _finish() -> void:
 func _update_label() -> void:
 	if _label == null:
 		return
-	var lines: Array = ["GENERATION RACE"]
+	var total: int = gen_params.size()
+	var lines: Array = []
+	if _done:
+		lines.append("🏁 GENERATION RACE — FINISHED")
+	else:
+		# Prominent "now playing" banner with a live countdown, so it's unmistakable that the race
+		# auto-cycles through generations (the creature looks similar each gen, so without this the
+		# switch is easy to miss and the race reads as "stuck on 500k").
+		lines.append("🏁 GENERATION RACE")
+		if _phase >= 0 and _phase < gen_labels.size():
+			var frames_left: int = maxi(0, frames_per_gen - _frames)
+			var secs: int = R.countdown_seconds(frames_left, Engine.physics_ticks_per_second)
+			lines.append(R.format_now(_phase + 1, total, gen_labels[_phase], _max_z, secs))
+		lines.append("")
 	# Finished generations, ranked.
-	var dists: Array = []
-	for r in _results:
-		dists.append(r["distance"])
-	var order := R.standings(dists)
-	for rank in range(order.size()):
-		var r = _results[order[rank]]
-		lines.append(R.format_row(rank + 1, r["label"], r["distance"]))
-	if not _done and _phase < gen_labels.size():
-		lines.append("...running %s: %.1f m" % [gen_labels[_phase], _max_z])
+	if _results.size() > 0:
+		lines.append("FINAL STANDINGS" if _done else "STANDINGS")
+		var dists: Array = []
+		for r in _results:
+			dists.append(r["distance"])
+		var order := R.standings(dists)
+		for rank in range(order.size()):
+			var r = _results[order[rank]]
+			lines.append(R.format_row(rank + 1, r["label"], r["distance"]))
 	_label.text = "\n".join(lines)
