@@ -9,6 +9,7 @@ extends Control
 # [scene path, title, one-line description]. Only standalone play scenes (committed net, no trainer).
 const DEMOS := [
 	["res://examples/chase_the_target/chase_the_target.tscn", "Chase the Target (2D)", "Discrete-action agent catches a moving target — the hello-world."],
+	["res://examples/chase_the_target/chase_the_target_debug.tscn", "Live Policy Swap (Chase)", "Hot-swap trained vs untrained nets from a dropdown — same scene, native ncnn, no Python (F3 for obs/actions)."],
 	["res://examples/rover_3d/rover_3d.tscn", "Rover (3D)", "Discrete-action 3D rover navigating to a goal."],
 	["res://examples/ball_chase/ball_chase.tscn", "Ball Chase (2D, SAC)", "Continuous-control agent chases a ball (Soft Actor-Critic)."],
 	["res://examples/fly_by/fly_by.tscn", "Fly By (3D, PPO)", "Continuous-control plane (pitch/turn), DiagGaussian sampling."],

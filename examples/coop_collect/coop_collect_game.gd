@@ -19,6 +19,9 @@ const M = preload("res://examples/coop_collect/coop_collect_math.gd")
 @export var item_norm := 1200.0         ## normalizer for relative-position obs
 @export var item_count := 4
 @export var seed_value := 12345         ## deterministic item layout (seeded)
+## Re-randomize the item layout each episode (play/showcase). Default false keeps the seeded,
+## reproducible layout that training, replays, and the golden/behavioral regressions depend on.
+@export var randomize_items := false
 @export var agent_a_body_path: NodePath
 @export var agent_b_body_path: NodePath
 # Early-finish "bank and leave" mode (#30 M3). Off by default -> M2 behavior is byte-identical.
@@ -42,22 +45,27 @@ func _ready() -> void:
 	var a := get_node_or_null(agent_a_body_path) as Node2D
 	var b := get_node_or_null(agent_b_body_path) as Node2D
 	_bodies = [a, b]
+	# Seed once: a fixed seed gives the reproducible layout training/tests need; randomize_items
+	# (play scene only) draws a fresh seed so each run — and each episode — varies.
+	if randomize_items:
+		_rng.randomize()
+	else:
+		_rng.seed = seed_value
 	_spawn_items()
 	reset_positions()
 
 func _spawn_items() -> void:
-	# Deterministic, seeded item layout (so episodes/replays/tests are reproducible).
-	_rng.seed = seed_value
-	_items.clear()
-	for i in range(item_count):
-		_items.append(Vector2(
-			_rng.randf_range(60.0, arena_size.x - 60.0),
-			_rng.randf_range(60.0, arena_size.y - 60.0)))
+	# Layout from the current RNG state (seeded for reproducibility, or randomized for the showcase).
+	_items.assign(M.item_layout(_rng, item_count, arena_size, 60.0))
 	_collected = []
 	_collected.resize(item_count)
 	_collected.fill(false)
 
 func reset_positions() -> void:
+	# Play/showcase: lay out a fresh field each episode so it's not the same scene every time.
+	# Seeded mode never re-spawns here, so its per-episode behavior stays byte-identical.
+	if randomize_items:
+		_spawn_items()
 	# Agents start clustered on the left so they must spread out to reach items efficiently.
 	if _bodies[0] != null:
 		_bodies[0].position = Vector2(80.0, arena_size.y * 0.4)

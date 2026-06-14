@@ -13,6 +13,22 @@ func _approx(h, got: Array, want: Array, msg: String) -> void:
 func _initialize() -> void:
 	var h := Harness.new()
 
+	# item_layout: reproducible per seed, varies across seeds, stays inside the margin.
+	var rng_a := RandomNumberGenerator.new()
+	rng_a.seed = 12345
+	var layout_a: Array = M.item_layout(rng_a, 4, Vector2(1000, 600), 60.0)
+	var rng_a2 := RandomNumberGenerator.new()
+	rng_a2.seed = 12345
+	var layout_a2: Array = M.item_layout(rng_a2, 4, Vector2(1000, 600), 60.0)
+	h.assert_eq(layout_a.size(), 4, "item_layout count")
+	h.assert_eq(layout_a, layout_a2, "item_layout same seed -> identical")
+	var rng_b := RandomNumberGenerator.new()
+	rng_b.seed = 99999
+	var layout_b: Array = M.item_layout(rng_b, 4, Vector2(1000, 600), 60.0)
+	h.assert_true(layout_a != layout_b, "item_layout different seed -> different")
+	for p in layout_a:
+		h.assert_true(p.x >= 60.0 and p.x <= 940.0 and p.y >= 60.0 and p.y <= 540.0, "item within margin")
+
 	# own_pos_obs: normalized by arena.
 	_approx(h, M.own_pos_obs(Vector2(500, 300), Vector2(1000, 600)), [0.5, 0.5], "own_pos_obs centre")
 

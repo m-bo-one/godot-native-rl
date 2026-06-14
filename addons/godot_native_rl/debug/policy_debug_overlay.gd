@@ -120,7 +120,9 @@ func build_text() -> String:
 		# A payload may carry its own identity (crowd units share one controller, so per-unit nodes
 		# don't expose policy/model props — the controller stuffs identity into the payload). Prefer
 		# it; fall back to the identity probed off the emitter node at connect time. (#232)
-		var identity: Dictionary = _identities[id]
+		# Re-probe the emitter's identity live (not the connect-time cache) so a runtime swap_model()
+		# — e.g. the Live Policy Swap demo — is reflected in the header; fall back to the cache.
+		var identity: Dictionary = _identity_of(c) if is_instance_valid(c) else _identities[id]
 		if _latest[id].get("identity") is Dictionary:
 			identity = _latest[id]["identity"]
 		lines.append_array(PolicyDebug.render_lines(_latest[id], identity, status, bar_width))
