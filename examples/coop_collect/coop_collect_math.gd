@@ -6,6 +6,18 @@
 # play is cooperative — which is exactly the credit-assignment setting MA-POCA's centralized critic
 # targets. All world math lives here so it is testable without a ticking scene.
 
+# Generate `count` item positions inside the arena, each at least `margin` from the walls, using the
+# given RNG. Pure aside from advancing the RNG: seed the RNG identically for a reproducible layout
+# (training/tests), or randomize() it for a fresh layout each episode (the play scene does the latter
+# so the showcase isn't the same field every run).
+static func item_layout(rng: RandomNumberGenerator, count: int, arena: Vector2, margin: float) -> Array:
+	var items: Array = []
+	for i in range(count):
+		items.append(Vector2(
+			rng.randf_range(margin, arena.x - margin),
+			rng.randf_range(margin, arena.y - margin)))
+	return items
+
 # Egocentric own-position obs, normalized to [0,1] by arena size.
 static func own_pos_obs(pos: Vector2, arena: Vector2) -> Array:
 	return [pos.x / arena.x, pos.y / arena.y]
