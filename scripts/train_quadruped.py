@@ -31,6 +31,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--speedup", type=int, default=8)
     p.add_argument("--action_repeat", type=int, default=4)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--ent_coef", type=float, default=0.0,
+                   help="PPO entropy coefficient; >0 encourages exploration (helps the hurdles task "
+                        "escape the deterministic local optimum a warm-started policy collapses into)")
     p.add_argument("--save_model_path", type=str, default="models/quadruped_walk.zip")
     p.add_argument("--pt_export_path", type=str, default="models/quadruped_walk.pt")
     # Periodic checkpointing: save an SB3 .zip every N total env-steps so you can watch the
@@ -38,7 +41,50 @@ def parse_args(argv=None) -> argparse.Namespace:
     # "generation race" (Milestone 4). 0 = off (only the final model is saved).
     p.add_argument("--checkpoint_freq", type=int, default=0)
     p.add_argument("--checkpoint_dir", type=str, default="models/quadruped_walk_ckpts")
+    # Warm-start: initialize the new policy from a previously trained SB3 .zip (e.g. train the
+    # hurdles runner from the walk runner). Layers whose shapes match are copied; a wider input
+    # layer (hurdles' 35-dim obs = walk's 29 + 6 hurdle rays) keeps the source columns and ZEROES
+    # the new ones, so the net starts behaving exactly like the source (ignoring the rays) and then
+    # learns to use them. Hugely more sample-efficient than training locomotion from scratch (#252).
+    p.add_argument("--init_from", type=str, default="",
+                   help="path to a source SB3 .zip to warm-start the policy from (shape-tolerant)")
     return p.parse_args(argv)
+
+
+def remap_widen_input(src_sd: dict, tgt_sd: dict) -> dict:
+    """Pure state-dict remap for warm-starting across a WIDER input layer. Returns a new dict over
+    the target's keys: copy the source tensor where shapes match; for a 2D weight that only grew
+    along the input dim (same out features, more in features) copy the source columns and zero the
+    new ones; otherwise keep the target's (freshly initialized) tensor. Torch-free — operates on
+    anything with `.shape`, `.clone()` and column assignment, so it's unit-testable with fakes."""
+    out = {}
+    for key, tgt in tgt_sd.items():
+        src = src_sd.get(key)
+        if src is None:
+            out[key] = tgt
+        elif tuple(src.shape) == tuple(tgt.shape):
+            out[key] = src
+        elif (len(src.shape) == 2 and len(tgt.shape) == 2
+              and src.shape[0] == tgt.shape[0] and src.shape[1] < tgt.shape[1]):
+            w = tgt.clone()
+            w[:, :src.shape[1]] = src
+            w[:, src.shape[1]:] = 0.0  # new inputs start ignored -> behaves like the source net
+            out[key] = w
+        else:
+            out[key] = tgt  # unhandled mismatch -> keep target init
+    return out
+
+
+def warm_start_policy(model, src_path: str) -> None:
+    """Load a source SB3 .zip and copy its policy weights into `model` via remap_widen_input."""
+    from stable_baselines3 import PPO
+
+    # SB3 re-appends ".zip", so an explicit "...zip" path becomes "...zip.zip" — strip it first.
+    clean = src_path[:-4] if src_path.endswith(".zip") else src_path
+    src = PPO.load(clean, device="cpu")
+    new_sd = remap_widen_input(src.policy.state_dict(), model.policy.state_dict())
+    model.policy.load_state_dict(new_sd)
+    print("Warm-started policy from %s (shape-tolerant copy)" % src_path)
 
 
 def main() -> None:
@@ -71,7 +117,7 @@ def main() -> None:
         batch_size=256,
         gae_lambda=0.95,
         gamma=0.99,
-        ent_coef=0.0,
+        ent_coef=args.ent_coef,
         learning_rate=3e-4,
         tensorboard_log="logs/sb3",
     )
@@ -88,6 +134,9 @@ def main() -> None:
         )
         print("Checkpointing every %d env-steps to %s (n_envs=%d)"
               % (args.checkpoint_freq, args.checkpoint_dir, n_envs))
+
+    if args.init_from:
+        warm_start_policy(model, args.init_from)
 
     model.learn(args.timesteps, callback=callback)
 

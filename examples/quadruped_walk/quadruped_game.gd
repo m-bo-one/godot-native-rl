@@ -68,6 +68,14 @@ func torso_pos() -> Vector3:
 func get_camera_pivot() -> Vector3:
 	return torso_pos()
 
+# Torso position RELATIVE to this world's origin (the torso is a direct child of the game node).
+# Tile-offset-safe: under ParallelArena worlds are tiled hundreds of units apart on the XZ grid, so
+# global torso position reads the tile offset. Absolute-position reward terms — the lateral lane
+# penalty and the hurdle-Z clear check — MUST use this local position, or every tile but the first is
+# wrongly penalized / mis-counted (the bug that stalled hurdles training at a constant -12.6). (#252)
+func torso_local_pos() -> Vector3:
+	return _rig["torso"].position
+
 func _finish_pos() -> Vector3:
 	if _finish == null:
 		return Vector3.ZERO
