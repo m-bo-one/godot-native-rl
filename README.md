@@ -3,8 +3,8 @@
 [![CI](https://github.com/minigraphx/godot-native-rl/actions/workflows/ci.yml/badge.svg)](https://github.com/minigraphx/godot-native-rl/actions/workflows/ci.yml)
 
 Reinforcement learning for **Godot 4.5+** with **native ncnn inference** — statically linked C++,
-no C#/.NET, no external runtime. Train with the standard `godot-rl` Python stack; deploy native on
-web/WASM, console, mobile, desktop, and edge.
+no C#/.NET, no external runtime. Train with the standard [`godot-rl`](https://github.com/edbeeching/godot_rl_agents)
+Python stack; deploy native on web/WASM, console, mobile, desktop, and edge.
 
 > **ncnn vs ONNX Runtime?** Honest decision guide:
 > [docs/ncnn_vs_onnx.md](docs/ncnn_vs_onnx.md).
@@ -128,6 +128,26 @@ You don't need the C++/SCons/ncnn toolchain to *use* this framework — just the
 Then enable the plugin in **Project → Project Settings → Plugins**.
 
 Building from source is covered in [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/dev/](docs/dev/).
+
+## Credits & relationship to godot_rl_agents
+
+This project grew out of — and stays wire-compatible with —
+**[godot_rl_agents](https://github.com/edbeeching/godot_rl_agents)** by Edward Beeching (the
+`godot-rl` Python package). You train with its stock package and speak its training protocol — that
+side is pure Python, **no .NET**. What we add is the **deployment** half: a native **ncnn** inference
+path (statically-linked C++ — web/WASM, console, mobile, edge, INT8; no external runtime). It's a
+*complement* to godot_rl_agents, not a hard fork of its code. Big thanks to Edward and the
+godot_rl_agents contributors.
+
+The piece we replace is specifically **in-Godot inference**: godot_rl_agents runs trained models
+inside Godot via **ONNX on the Mono/.NET build of the editor** (its in-engine ONNX inference needs the
+Godot .NET/Mono editor — see its [README](https://github.com/edbeeching/godot_rl_agents)).
+Native ncnn is the **no-.NET** alternative for that step. Prefer ONNX anyway? You can export ONNX from
+`godot-rl` and run it with **ONNX Runtime** off-engine (server / desktop / NVIDIA), or load it in
+Godot with a **native C++ ONNX GDExtension** —
+[joemarshall/godot_onnx_extension](https://github.com/joemarshall/godot_onnx_extension) or
+[mat490/Godot-ONNX-AI-Models-Loaders](https://github.com/mat490/Godot-ONNX-AI-Models-Loaders) — to
+skip .NET. Our honest [ncnn vs ONNX Runtime guide](docs/ncnn_vs_onnx.md) compares all of these.
 
 ## Compatibility
 
