@@ -13,15 +13,24 @@ extends "res://addons/godot_native_rl/sensors/i_sensor_2d.gd"
 const RelativePositionMath = preload("res://addons/godot_native_rl/sensors/relative_position_math.gd")
 const EntityObsMath = preload("res://addons/godot_native_rl/sensors/entity_obs_math.gd")
 
+## Max entities encoded; only the nearest this many are kept (the rest are dropped).
 @export var max_entities: int = 8
+## Entities to observe (explicit list); combined with group_name, nearest max_entities kept.
 @export var objects_to_observe: Array[Node2D]
+## Optional group whose members are also observed (added to objects_to_observe).
 @export var group_name: StringName = &""
+## Distance normalizer for the relative-position features (0 = closest, 1 = at/over this).
 @export_range(0.01, 20000.0) var max_distance: float = 1.0
+## Include the relative X component in each entity's features.
 @export var include_x: bool = true
+## Include the relative Y component in each entity's features.
 @export var include_y: bool = true
+## false: normalized clamped offset. true: unit direction + a distance scalar.
 @export var use_separate_direction: bool = false
 ## Number of extra scalar features each entity provides via get_entity_features() (0 = none).
 @export var extra_feature_count: int = 0
+
+var _warned_cap := false
 
 # Floats per entity = relative-position features + extra scalars.
 func feature_width() -> int:
@@ -35,8 +44,12 @@ func get_observation() -> Array:
 	var sensor_pos := sensor_xform.origin
 	var sensor_rotation := sensor_xform.get_rotation()
 	var feat := feature_width()
+	var cands := _candidates()
+	if cands.size() > max_entities and not _warned_cap:
+		push_warning("EntitySensor2D: %d candidates exceed max_entities=%d; keeping the nearest %d." % [cands.size(), max_entities, max_entities])
+		_warned_cap = true
 	var entities: Array = []
-	for obj in _candidates():
+	for obj in cands:
 		if not is_instance_valid(obj):
 			continue
 		var target_pos: Vector2 = obj.global_position if obj.is_inside_tree() else obj.position

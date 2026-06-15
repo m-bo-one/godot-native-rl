@@ -9,16 +9,26 @@ extends "res://addons/godot_native_rl/sensors/i_sensor_3d.gd"
 const RelativePositionMath = preload("res://addons/godot_native_rl/sensors/relative_position_math.gd")
 const EntityObsMath = preload("res://addons/godot_native_rl/sensors/entity_obs_math.gd")
 
+## Max entities encoded; only the nearest this many are kept (the rest are dropped).
 @export var max_entities: int = 8
+## Entities to observe (explicit list); combined with group_name, nearest max_entities kept.
 @export var objects_to_observe: Array[Node3D]
+## Optional group whose members are also observed (added to objects_to_observe).
 @export var group_name: StringName = &""
+## Distance normalizer for the relative-position features (0 = closest, 1 = at/over this).
 @export_range(0.01, 20000.0) var max_distance: float = 1.0
+## Include the relative X component in each entity's features.
 @export var include_x: bool = true
+## Include the relative Y component in each entity's features.
 @export var include_y: bool = true
+## Include the relative Z component in each entity's features.
 @export var include_z: bool = true
+## false: normalized clamped offset. true: unit direction + a distance scalar.
 @export var use_separate_direction: bool = false
 ## Number of extra scalar features each entity provides via get_entity_features() (0 = none).
 @export var extra_feature_count: int = 0
+
+var _warned_cap := false
 
 func feature_width() -> int:
 	return RelativePositionMath.per_target_size(use_separate_direction, include_x, include_y, include_z) + extra_feature_count
@@ -31,8 +41,12 @@ func get_observation() -> Array:
 	var sensor_pos := sensor_xform.origin
 	var sensor_basis := sensor_xform.basis
 	var feat := feature_width()
+	var cands := _candidates()
+	if cands.size() > max_entities and not _warned_cap:
+		push_warning("EntitySensor3D: %d candidates exceed max_entities=%d; keeping the nearest %d." % [cands.size(), max_entities, max_entities])
+		_warned_cap = true
 	var entities: Array = []
-	for obj in _candidates():
+	for obj in cands:
 		if not is_instance_valid(obj):
 			continue
 		var target_pos: Vector3 = obj.global_position if obj.is_inside_tree() else obj.position
