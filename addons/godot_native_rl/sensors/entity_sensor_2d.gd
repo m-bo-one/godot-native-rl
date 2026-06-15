@@ -14,7 +14,7 @@ const RelativePositionMath = preload("res://addons/godot_native_rl/sensors/relat
 const EntityObsMath = preload("res://addons/godot_native_rl/sensors/entity_obs_math.gd")
 
 @export var max_entities: int = 8
-@export var objects_to_observe: Array[Node2D] = []
+@export var objects_to_observe: Array[Node2D]
 @export var group_name: StringName = &""
 @export_range(0.01, 20000.0) var max_distance: float = 1.0
 @export var include_x: bool = true
@@ -52,7 +52,7 @@ func _candidates() -> Array:
 	for o in objects_to_observe:
 		if o != null and not out.has(o):
 			out.append(o)
-	if String(group_name) != "" and is_inside_tree():
+	if not group_name.is_empty() and is_inside_tree():
 		for o in get_tree().get_nodes_in_group(group_name):
 			if o != null and not out.has(o):
 				out.append(o)
