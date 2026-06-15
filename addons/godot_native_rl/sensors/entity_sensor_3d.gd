@@ -42,6 +42,7 @@ func get_observation() -> Array:
 		entities.append({"dist": offset.length(), "feat": row})
 	return EntityObsMath.build_obs(entities, max_entities, feat)
 
+# Union of explicit targets and group members, de-duplicated (explicit first, then group).
 func _candidates() -> Array:
 	var out: Array = []
 	for o in objects_to_observe:
@@ -53,6 +54,8 @@ func _candidates() -> Array:
 				out.append(o)
 	return out
 
+# Extra per-entity scalars from a duck-typed get_entity_features(); zero-filled when absent or the
+# wrong length, so the block width stays exact.
 func _extra_features(obj) -> Array:
 	if extra_feature_count <= 0:
 		return []

@@ -23,6 +23,12 @@ func _initialize() -> void:
 	h.assert_eq(sensor.feature_width(), 3, "feature_width = 3 (x,y,z)")
 	h.assert_eq(sensor.obs_size(), 8, "obs_size = 2*3 + 2")
 
+	# include_z = false drops the z axis -> 2 position features.
+	var sz = Sensor.new()
+	sz.include_z = false
+	sz.extra_feature_count = 0
+	h.assert_eq(sz.feature_width(), 2, "feature_width = 2 when include_z=false")
+
 	# One entity at (10,0,0): scaled (1,0,0); flags [1,0].
 	var objs: Array[Node3D] = []
 	objs.append(_make(Vector3(10, 0, 0), []))
