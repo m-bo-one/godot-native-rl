@@ -26,4 +26,32 @@ func _initialize() -> void:
 	var z := OrbitCamera.offset_to_spherical(Vector3.ZERO)
 	_approx(h, z["distance"], 0.0, "zero offset -> zero distance")
 
+	# --- input-apply state (mutates az/el/dist with clamps; no tree needed) ---
+	var cam = OrbitCamera.new()
+	cam.default_offset = Vector3(4.0, 3.5, -9.0)
+	cam.min_distance = 3.0
+	cam.max_distance = 40.0
+	cam.init_from_offset()  # derive az/el/dist from default_offset (what _ready does)
+	var d0: float = cam.get_distance()
+	_approx(h, d0, Vector3(4.0, 3.5, -9.0).length(), "init distance = offset length")
+
+	# zoom in clamps at min_distance; zoom out clamps at max_distance.
+	cam.zoom_step = 100.0
+	cam.apply_zoom(-1)
+	_approx(h, cam.get_distance(), 3.0, "zoom in clamps to min_distance")
+	cam.apply_zoom(1)
+	_approx(h, cam.get_distance(), 40.0, "zoom out clamps to max_distance")
+
+	# elevation clamps to ~±80deg (1.4 rad).
+	cam.apply_orbit_drag(Vector2(0.0, 100000.0))
+	h.assert_true(cam.get_elevation() <= 1.4001, "elevation clamps high")
+	cam.apply_orbit_drag(Vector2(0.0, -200000.0))
+	h.assert_true(cam.get_elevation() >= -1.4001, "elevation clamps low")
+
+	# set_orbit(false) resets the view to the default offset (a 'reset camera').
+	cam.apply_orbit_drag(Vector2(500.0, 0.0))
+	cam.set_orbit(false)
+	_approx(h, cam.get_distance(), d0, "set_orbit(false) resets distance to default")
+	cam.free()
+
 	h.finish(self)

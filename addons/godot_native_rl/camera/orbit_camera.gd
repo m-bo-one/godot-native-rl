@@ -22,3 +22,51 @@ static func offset_to_spherical(offset: Vector3) -> Dictionary:
 		"azimuth": atan2(offset.x, offset.z),
 		"elevation": asin(clampf(offset.y / d, -1.0, 1.0)),
 		"distance": d}
+
+# --- Configuration ---
+@export var default_offset := Vector3(4.0, 3.5, -9.0)  ## follow-mode view (= the old follow cam)
+@export var smooth := 4.0                              ## position easing speed
+@export var orbit_sensitivity := 0.008                 ## radians per pixel of drag
+@export var zoom_step := 1.5                            ## metres per wheel notch
+@export var min_distance := 3.0
+@export var max_distance := 40.0
+@export var toggle_key := KEY_C                         ## follow <-> orbit (or switch camera, with a fallback)
+@export var game_path: NodePath                         ## node with get_camera_pivot(); defaults to the parent
+@export var fallback_camera_path: NodePath             ## set on fly_by: the camera to restore when toggling off
+
+const _ELEV_CLAMP := 1.4  # ~80 degrees
+
+var _game
+var _orbit := false
+var _azimuth := 0.0
+var _elevation := 0.0
+var _distance := 1.0
+var _dragging := false
+var _snapped := false
+
+# Derive the spherical state from default_offset so FOLLOW mode reproduces the old fixed offset
+# exactly (orbit_position(pivot, az, el, dist) == pivot + default_offset by construction).
+func init_from_offset() -> void:
+	var s := offset_to_spherical(default_offset)
+	_azimuth = s["azimuth"]
+	_elevation = s["elevation"]
+	_distance = s["distance"]
+
+func get_distance() -> float:
+	return _distance
+
+func get_elevation() -> float:
+	return _elevation
+
+func apply_orbit_drag(delta: Vector2) -> void:
+	_azimuth -= delta.x * orbit_sensitivity
+	_elevation = clampf(_elevation + delta.y * orbit_sensitivity, -_ELEV_CLAMP, _ELEV_CLAMP)
+
+func apply_zoom(notches: int) -> void:
+	_distance = clampf(_distance + float(notches) * zoom_step, min_distance, max_distance)
+
+# Switch mode. Returning to follow resets the view to default_offset (a 'reset camera').
+func set_orbit(on: bool) -> void:
+	_orbit = on
+	if not on:
+		init_from_offset()
