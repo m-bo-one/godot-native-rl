@@ -153,3 +153,15 @@ its own world origin (the torso is a direct child of the game node). With it, th
 went from -12.6 to +104 on the first rollout. **Rule: in a reward/terminal, only ever use velocities,
 *relative* distances (finish offset cancels), or explicitly tile-local positions — never a raw global
 position.** `distance()`/`dir_to_finish()` are fine (torso and finish share the offset, it cancels).
+
+## Browsers eat the Escape key — a web export can't use Escape for "back to menu"
+
+On a Godot **web/WASM** export the browser reserves the **Escape** key (it exits fullscreen /
+pointer-lock), so the `keydown` usually never reaches the engine — an Escape-only "return to the
+launcher" silently does nothing in the browser (it works fine on desktop). Same story for any
+browser-reserved key (Backspace navigates history, etc.). Fix: give every demo an **on-screen
+button** (mouse/touch reaches Godot `Control` nodes everywhere), keeping the Escape keybind as a
+desktop convenience. The examples ship this via the `demo_nav` autoload (`examples/demo_nav.gd`),
+which builds an always-on-top "Menu" button on a high `CanvasLayer` — present on every scene without
+per-scene wiring, hidden on the launcher, `focus_mode = FOCUS_NONE` so it never steals the demo's
+keyboard input. Lesson: never rely on a keyboard-only escape hatch for web; provide a clickable one.

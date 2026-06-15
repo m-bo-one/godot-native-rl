@@ -4,7 +4,8 @@ extends Control
 # project and pressing F5 lands on a menu instead of guessing which of the 4-12 .tscn files per
 # example is safe to run (training scenes hang waiting for a Python trainer; world/sub-scenes aren't
 # meant to run alone). Curated by hand — it's a showcase, not auto-discovery. Press a button to run;
-# the demo_nav autoload sends Escape back here (shipped in the examples project.godot).
+# the demo_nav autoload's on-screen "Menu" button (and Escape on desktop) returns here — the button
+# is what makes "back to menu" work on a web export, where the browser eats Escape.
 
 # [scene path, title, one-line description]. Only standalone play scenes (committed net, no trainer).
 const DEMOS := [
@@ -41,7 +42,7 @@ func _ready() -> void:
 	scroll.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "Godot Native RL — Demos   (Esc returns here)"
+	title.text = "Godot Native RL — Demos   (☰ Menu or Esc returns here)"
 	vbox.add_child(title)
 
 	for d in DEMOS:
