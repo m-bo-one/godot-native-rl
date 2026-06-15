@@ -70,3 +70,61 @@ func set_orbit(on: bool) -> void:
 	_orbit = on
 	if not on:
 		init_from_offset()
+
+func _ready() -> void:
+	# Resolve the game node only — do NOT read the pivot here: a child camera's _ready() runs before
+	# the game-root builds its rig, so the pivot may not exist yet. The first _process snaps in.
+	_game = get_node_or_null(game_path) if not game_path.is_empty() else get_parent()
+	init_from_offset()
+
+func _pivot() -> Vector3:
+	if _game != null and _game.has_method("get_camera_pivot"):
+		return _game.get_camera_pivot()
+	return Vector3.ZERO
+
+func _toggle() -> void:
+	if fallback_camera_path.is_empty():
+		# Single-camera demos (quadruped/rover): flip follow <-> orbit in place.
+		set_orbit(not _orbit)
+	else:
+		# fly_by: switch the active camera between this orbit cam and the heading cam.
+		var fb := get_node_or_null(fallback_camera_path) as Camera3D
+		if current:
+			if fb != null:
+				fb.current = true  # back to the heading cam (deactivates this one)
+		else:
+			current = true        # activate the orbit cam
+			set_orbit(true)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == toggle_key:
+		_toggle()
+		return
+	# Only respond to mouse when we're the active camera.
+	if not current:
+		return
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			_dragging = event.pressed
+			if event.pressed:
+				_orbit = true  # auto-enter orbit on drag
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			_orbit = true
+			apply_zoom(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			_orbit = true
+			apply_zoom(1)
+	elif event is InputEventMouseMotion and _dragging and _orbit:
+		apply_orbit_drag(event.relative)
+
+func _process(delta: float) -> void:
+	if _game == null or not _game.has_method("get_camera_pivot"):
+		return
+	var pivot := _pivot()
+	var goal := orbit_position(pivot, _azimuth, _elevation, _distance)
+	if _snapped:
+		global_position = global_position.lerp(goal, clampf(smooth * delta, 0.0, 1.0))
+	else:
+		global_position = goal
+		_snapped = true
+	look_at(pivot, Vector3.UP)
