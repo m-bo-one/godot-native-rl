@@ -5,7 +5,7 @@
 > removes a managed-runtime dependency and links inference statically into your Godot build. If your
 > goal is **server-side inference, rapid iteration without a conversion step, NVIDIA/TensorRT
 > acceleration, or exotic operators**, **ONNX Runtime is the better tool** and you should keep using
-> the stock `godot_rl_agents` ONNX path.
+> the stock [`godot_rl_agents`][grl] ONNX path.
 >
 > This guide is deliberately balanced. ncnn is not strictly better; it is better *for native game
 > deployment*, which is this project's focus. Where ONNX Runtime wins, we say so.

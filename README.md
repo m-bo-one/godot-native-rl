@@ -3,8 +3,8 @@
 [![CI](https://github.com/minigraphx/godot-native-rl/actions/workflows/ci.yml/badge.svg)](https://github.com/minigraphx/godot-native-rl/actions/workflows/ci.yml)
 
 Reinforcement learning for **Godot 4.5+** with **native ncnn inference** — statically linked C++,
-no C#/.NET, no external runtime. Train with the standard `godot-rl` Python stack; deploy native on
-web/WASM, console, mobile, desktop, and edge.
+no C#/.NET, no external runtime. Train with the standard [`godot-rl`](https://github.com/edbeeching/godot_rl_agents)
+Python stack; deploy native on web/WASM, console, mobile, desktop, and edge.
 
 > **ncnn vs ONNX Runtime?** Honest decision guide:
 > [docs/ncnn_vs_onnx.md](docs/ncnn_vs_onnx.md).
@@ -126,6 +126,20 @@ You don't need the C++/SCons/ncnn toolchain to *use* this framework — just the
 Then enable the plugin in **Project → Project Settings → Plugins**.
 
 Building from source is covered in [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/dev/](docs/dev/).
+
+## Credits & relationship to godot_rl_agents
+
+This project grew out of — and stays wire-compatible with —
+**[godot_rl_agents](https://github.com/edbeeching/godot_rl_agents)** by Edward Beeching (the
+`godot-rl` Python package). You train with its stock package and speak its training protocol; what
+we add is a **native ncnn deployment path** (statically-linked C++: web/WASM, console, mobile, edge,
+INT8 — no .NET or external runtime). It's a *complement* to godot_rl_agents, not a hard fork of its
+code. Big thanks to Edward and the godot_rl_agents contributors.
+
+**Just want ONNX models / the standard ONNX deployment route?** Use
+**[godot_rl_agents](https://github.com/edbeeching/godot_rl_agents)** directly — it's the better fit
+when you want ONNX Runtime, server-side inference, or NVIDIA/TensorRT. Our honest
+[ncnn vs ONNX Runtime guide](docs/ncnn_vs_onnx.md) lays out the trade-offs either way.
 
 ## Compatibility
 
