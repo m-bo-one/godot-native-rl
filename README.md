@@ -131,15 +131,21 @@ Building from source is covered in [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/
 
 This project grew out of — and stays wire-compatible with —
 **[godot_rl_agents](https://github.com/edbeeching/godot_rl_agents)** by Edward Beeching (the
-`godot-rl` Python package). You train with its stock package and speak its training protocol; what
-we add is a **native ncnn deployment path** (statically-linked C++: web/WASM, console, mobile, edge,
-INT8 — no .NET or external runtime). It's a *complement* to godot_rl_agents, not a hard fork of its
-code. Big thanks to Edward and the godot_rl_agents contributors.
+`godot-rl` Python package). You train with its stock package and speak its training protocol — that
+side is pure Python, **no .NET**. What we add is the **deployment** half: a native **ncnn** inference
+path (statically-linked C++ — web/WASM, console, mobile, edge, INT8; no external runtime). It's a
+*complement* to godot_rl_agents, not a hard fork of its code. Big thanks to Edward and the
+godot_rl_agents contributors.
 
-**Just want ONNX models / the standard ONNX deployment route?** Use
-**[godot_rl_agents](https://github.com/edbeeching/godot_rl_agents)** directly — it's the better fit
-when you want ONNX Runtime, server-side inference, or NVIDIA/TensorRT. Our honest
-[ncnn vs ONNX Runtime guide](docs/ncnn_vs_onnx.md) lays out the trade-offs either way.
+The piece we replace is specifically **in-Godot inference**: godot_rl_agents runs trained models
+inside Godot via **ONNX on the Mono/.NET build of the editor** (its in-engine ONNX inference needs the
+Godot .NET/Mono editor — see its [README](https://github.com/edbeeching/godot_rl_agents)).
+Native ncnn is the **no-.NET** alternative for that step. Prefer ONNX anyway? You can export ONNX from
+`godot-rl` and run it with **ONNX Runtime** off-engine (server / desktop / NVIDIA), or load it in
+Godot with a **native C++ ONNX GDExtension** —
+[joemarshall/godot_onnx_extension](https://github.com/joemarshall/godot_onnx_extension) or
+[mat490/Godot-ONNX-AI-Models-Loaders](https://github.com/mat490/Godot-ONNX-AI-Models-Loaders) — to
+skip .NET. Our honest [ncnn vs ONNX Runtime guide](docs/ncnn_vs_onnx.md) compares all of these.
 
 ## Compatibility
 
