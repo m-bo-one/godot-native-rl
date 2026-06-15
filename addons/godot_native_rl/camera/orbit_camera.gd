@@ -83,6 +83,7 @@ func _pivot() -> Vector3:
 	return Vector3.ZERO
 
 func _toggle() -> void:
+	_dragging = false  # any mode/camera switch ends an in-progress drag
 	if fallback_camera_path.is_empty():
 		# Single-camera demos (quadruped/rover): flip follow <-> orbit in place.
 		set_orbit(not _orbit)
