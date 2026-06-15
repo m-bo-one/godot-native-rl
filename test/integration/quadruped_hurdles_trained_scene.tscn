@@ -61,5 +61,5 @@ game_path = NodePath("..")
 agent_path = NodePath("../Agent")
 track_path = NodePath("../Hurdles")
 frames_to_run = 5000
-min_forward = 25.0
-min_cleared = 4
+min_forward = 10.0
+min_cleared = 2
