@@ -64,6 +64,10 @@ func torso_pos() -> Vector3:
 		return t.global_position
 	return t.position
 
+# Orbit-camera pivot (#265): the point the demo camera looks at / orbits around.
+func get_camera_pivot() -> Vector3:
+	return torso_pos()
+
 func _finish_pos() -> Vector3:
 	if _finish == null:
 		return Vector3.ZERO
