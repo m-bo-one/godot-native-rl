@@ -9,6 +9,16 @@ Python stack; deploy native on web/WASM, console, mobile, desktop, and edge.
 > **ncnn vs ONNX Runtime?** Honest decision guide:
 > [docs/ncnn_vs_onnx.md](docs/ncnn_vs_onnx.md).
 
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/Cud1gvbjg0I/hqdefault.jpg)](https://youtu.be/Cud1gvbjg0I)
+
+▶ **[Watch the demo on YouTube](https://youtu.be/Cud1gvbjg0I)** — trained agents running on native ncnn, no Python at runtime.
+
+| Chase the target | Quadruped (locomotion) | Rover (3D) |
+|:---:|:---:|:---:|
+| ![Chase the target](media/Catch.jpeg) | ![Quadruped locomotion](media/Quadruped-Debug.jpeg) | ![Rover 3D](media/Rover.jpg) |
+
 ## Quick start (game developers)
 
 1. **Install** — get the extension and enable the plugin:

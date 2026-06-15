@@ -51,6 +51,9 @@ thirdparty/ncnn/build-tools/
 thirdparty/ncnn/tools-bin/
 .DS_Store
 
+# README/doc media are not game resources; ignore Godot's generated import sidecars for them.
+media/*.import
+
 # Claude Code runtime state (machine-local; settings.json IS tracked, the lock is not)
 .claude/scheduled_tasks.lock
 
