@@ -1,0 +1,74 @@
+class_name EntitySensor2D
+extends "res://addons/godot_native_rl/sensors/i_sensor_2d.gd"
+
+# Variable-length entity observation (#46): encodes up to `max_entities` NEAREST entities into a
+# fixed-width flat block [N*F entity features (zero-padded)] + [N presence flags], for the attention
+# encoder. Entities are the union of `objects_to_observe` and any nodes in `group_name`. Each entity
+# contributes egocentric relative-position features (RelativePositionMath, like RelativePositionSensor)
+# optionally followed by `extra_feature_count` custom scalars from a duck-typed get_entity_features()
+# on the entity node. Stable fixed width: variable count rides in the flags, not the vector length.
+#
+# Extend the ISensor base BY PATH (class-name cache is unreliable headless — see CLAUDE.md).
+
+const RelativePositionMath = preload("res://addons/godot_native_rl/sensors/relative_position_math.gd")
+const EntityObsMath = preload("res://addons/godot_native_rl/sensors/entity_obs_math.gd")
+
+@export var max_entities: int = 8
+@export var objects_to_observe: Array[Node2D] = []
+@export var group_name: StringName = &""
+@export_range(0.01, 20000.0) var max_distance: float = 1.0
+@export var include_x: bool = true
+@export var include_y: bool = true
+@export var use_separate_direction: bool = false
+## Number of extra scalar features each entity provides via get_entity_features() (0 = none).
+@export var extra_feature_count: int = 0
+
+# Floats per entity = relative-position features + extra scalars.
+func feature_width() -> int:
+	return RelativePositionMath.per_target_size(use_separate_direction, include_x, include_y, false) + extra_feature_count
+
+func obs_size() -> int:
+	return EntityObsMath.obs_size(max_entities, feature_width())
+
+func get_observation() -> Array:
+	var sensor_xform := global_transform if is_inside_tree() else transform
+	var sensor_pos := sensor_xform.origin
+	var sensor_rotation := sensor_xform.get_rotation()
+	var feat := feature_width()
+	var entities: Array = []
+	for obj in _candidates():
+		if not is_instance_valid(obj):
+			continue
+		var target_pos: Vector2 = obj.global_position if obj.is_inside_tree() else obj.position
+		var offset := target_pos - sensor_pos
+		var row: Array = RelativePositionMath.encode_2d(offset, sensor_rotation, max_distance, use_separate_direction, include_x, include_y)
+		row.append_array(_extra_features(obj))
+		entities.append({"dist": offset.length(), "feat": row})
+	return EntityObsMath.build_obs(entities, max_entities, feat)
+
+# Union of explicit targets and group members, de-duplicated (explicit first, then group).
+func _candidates() -> Array:
+	var out: Array = []
+	for o in objects_to_observe:
+		if o != null and not out.has(o):
+			out.append(o)
+	if String(group_name) != "" and is_inside_tree():
+		for o in get_tree().get_nodes_in_group(group_name):
+			if o != null and not out.has(o):
+				out.append(o)
+	return out
+
+# Extra per-entity scalars from a duck-typed get_entity_features(); zero-filled when absent or the
+# wrong length, so the block width stays exact.
+func _extra_features(obj) -> Array:
+	if extra_feature_count <= 0:
+		return []
+	var vals: Array = []
+	if obj.has_method("get_entity_features"):
+		var got = obj.get_entity_features()
+		if got is Array:
+			vals = got
+	var out: Array = []
+	for i in range(extra_feature_count):
+		out.append(float(vals[i]) if i < vals.size() else 0.0)
+	return out
