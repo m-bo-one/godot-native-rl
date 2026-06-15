@@ -137,3 +137,19 @@ headless callers (the `--script` test calls `_runner.poll()` each frame). The ol
 stays as a best-effort nudge; an atomic exchange makes delivery single-shot regardless of which drain
 site fires first. Lesson: don't rely on a non-Godot worker thread's deferred call being flushed in
 every host; drain on the main thread you control.
+
+## Position-based rewards must use TILE-LOCAL coordinates under ParallelArena
+
+`ParallelArena` isolates the N training worlds spatially — it tiles them hundreds of units apart on
+the XZ grid. So a body's **global** position carries its tile offset. Any reward/termination term that
+reads an *absolute position* (not a velocity or a relative distance) is therefore wrong on every tile
+but the first. This stalled the quadruped **hurdles** training dead for five retrains: the lateral-lane
+penalty and the hurdle-Z clear check read global torso X/Z, so 7 of 8 tiled creatures were
+constant-maxed on the lane penalty for their *tile offset* (not real drift) and mis-counted clears —
+collapsing every run to a flat `ep_rew_mean ≈ -12.6`. The *walk* reward never hit this because it's
+velocity-based (offset-invariant), which is exactly why walk always trained and hurdles never did.
+Fix: a tile-local accessor — `QuadrupedGame.torso_local_pos()` returns the torso position relative to
+its own world origin (the torso is a direct child of the game node). With it, the warm-started walker
+went from -12.6 to +104 on the first rollout. **Rule: in a reward/terminal, only ever use velocities,
+*relative* distances (finish offset cancels), or explicitly tile-local positions — never a raw global
+position.** `distance()`/`dir_to_finish()` are fine (torso and finish share the offset, it cancels).

@@ -16,6 +16,13 @@ func _initialize() -> void:
 	h.assert_eq(Track.hurdle_layout(-2, 8.0, 8.0), [], "negative count -> empty layout")
 	h.assert_eq(Track.hurdle_layout(3, 8.0, 8.0), [8.0, 16.0, 24.0], "3 hurdles spaced 8 from 8")
 
+	# hurdle_height_at (#252): uniform when max <= base; ramps base->max across the count otherwise.
+	h.assert_true(absf(Track.hurdle_height_at(0, 6, 0.3, 0.0) - 0.3) < 1e-6, "height uniform when max=0")
+	h.assert_true(absf(Track.hurdle_height_at(5, 6, 0.3, 0.2) - 0.3) < 1e-6, "height uniform when max<base")
+	h.assert_true(absf(Track.hurdle_height_at(0, 6, 0.3, 0.55) - 0.3) < 1e-6, "first hurdle = base")
+	h.assert_true(absf(Track.hurdle_height_at(5, 6, 0.3, 0.55) - 0.55) < 1e-6, "last hurdle = max")
+	h.assert_true(absf(Track.hurdle_height_at(1, 6, 0.3, 0.55) - 0.35) < 1e-6, "second hurdle ramps")
+
 	# --- track node: build / progress / curriculum ---
 	var track = Track.new()
 	track.hurdle_count = 2

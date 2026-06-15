@@ -27,6 +27,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 40)
 script = ExtResource("3")
 hurdle_count = 6
 hurdle_height = 0.3
+hurdle_height_max = 0.55
 hurdle_spacing = 6.0
 
 [node name="RaySensor" type="Node3D" parent="."]
@@ -45,6 +46,7 @@ game_path = NodePath("..")
 hurdle_track_path = NodePath("../Hurdles")
 ray_sensor_path = NodePath("../RaySensor")
 control_mode = 3
+reset_after = 6000
 model_param_path = "res://examples/quadruped_walk/models/quadruped_hurdles.ncnn.param"
 model_bin_path = "res://examples/quadruped_walk/models/quadruped_hurdles.ncnn.bin"
 
@@ -58,6 +60,6 @@ script = ExtResource("6")
 game_path = NodePath("..")
 agent_path = NodePath("../Agent")
 track_path = NodePath("../Hurdles")
-frames_to_run = 1200
-min_forward = 8.0
-min_cleared = 1
+frames_to_run = 5000
+min_forward = 25.0
+min_cleared = 4

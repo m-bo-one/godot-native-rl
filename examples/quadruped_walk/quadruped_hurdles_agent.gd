@@ -15,6 +15,16 @@ const RAY_OBS_SIZE := 6
 @export var curriculum_path: NodePath  ## this world's CurriculumController (per-world under ParallelArena)
 @export var clear_bonus := 1.0
 @export var sensor_height := 0.5  ## ray origin Y above the ground (level, torso-independent)
+# Anti-bypass (#252): instead of a hard out-of-lane terminal (which ended episodes before the policy
+# could learn to recover -> collapsed to a degenerate out-of-lane policy), keep the creature in-lane
+# with a CONTINUOUS lateral-position penalty: |torso_x| beyond lane_soft costs lane_weight per metre,
+# so drifting toward the hurdle's edge to run BESIDE it is never worth it, but the episode keeps going
+# and a smooth gradient pulls the creature back to center. Clears are paid only within lane_half_width.
+@export var lane_half_width := 2.5
+@export var lane_soft := 1.2          ## |torso_x| beyond this starts being penalized
+@export var lane_weight := 0.6        ## penalty per metre of lateral excess
+@export var lane_excess_cap := 2.0    ## cap the penalized excess (metres) so a transient can't run the reward away
+@export var lane_bound := 6.0         ## |torso_x| beyond this ends the episode (wide safety net for blowups)
 
 var _track
 var _sensor
@@ -95,11 +105,23 @@ func _physics_process(_delta: float) -> void:
 	reward -= lateral_weight * absf(_game.lateral_velocity())
 	reward += upright_weight * _game.upright()
 	reward -= energy_penalty * _sum_abs(_action)
-	if _track != null:
-		var cleared: int = _track.count_newly_passed(_game.torso_pos().z)
+	# Tile-offset-safe LOCAL torso position (global X/Z carry the ParallelArena tile offset, which
+	# would constant-max the lane penalty + mis-count clears on every tile but the first — the bug
+	# that stalled every hurdles retrain at a flat -12.6). (#252)
+	var torso_local: Vector3 = _game.torso_local_pos()
+	var torso_x: float = torso_local.x
+	# Soft, BOUNDED lane keeping: a capped continuous penalty beyond lane_soft pulls the creature back
+	# to center (no tight terminal — that was unlearnable) while the cap stops a transient excursion or
+	# physics spike from running the reward away.
+	reward -= lane_weight * minf(maxf(0.0, absf(torso_x) - lane_soft), lane_excess_cap)
+	# Clears are only paid IN-LANE: the bonus can't be earned by drifting past the hurdle's edge.
+	if _track != null and absf(torso_x) <= lane_half_width:
+		var cleared: int = _track.count_newly_passed(torso_local.z)
 		_episode_clears += cleared
 		reward += clear_bonus * cleared
-	if _is_fallen():
+	# Terminal on a fall OR a wide lateral blowout (far past the hurdles) — the wide bound leaves room
+	# to drift and recover but still ends a truly off-track/haywire episode.
+	if _is_fallen() or absf(torso_x) > lane_bound:
 		reward -= fall_penalty
 		done = true
 		needs_reset = true
