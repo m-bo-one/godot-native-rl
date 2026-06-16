@@ -64,6 +64,10 @@ func torso_pos() -> Vector3:
 		return t.global_position
 	return t.position
 
+# Orbit-camera pivot (#265): the point the demo camera looks at / orbits around.
+func get_camera_pivot() -> Vector3:
+	return torso_pos()
+
 # Torso position RELATIVE to this world's origin (the torso is a direct child of the game node).
 # Tile-offset-safe: under ParallelArena worlds are tiled hundreds of units apart on the XZ grid, so
 # global torso position reads the tile offset. Absolute-position reward terms — the lateral lane

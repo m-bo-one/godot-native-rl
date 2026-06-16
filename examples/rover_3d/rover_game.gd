@@ -84,6 +84,10 @@ func read_obstacles(parent: Node) -> Array:
 func get_agent_pos() -> Vector3:
 	return _agent_body.position if _agent_body != null else Vector3.ZERO
 
+# Orbit-camera pivot (#265): the rover position the demo camera looks at / orbits around.
+func get_camera_pivot() -> Vector3:
+	return get_agent_pos()
+
 func get_agent_yaw() -> float:
 	return _agent_body.rotation.y if _agent_body != null else 0.0
 

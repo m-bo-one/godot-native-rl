@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://examples/fly_by/fly_by_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/fly_by/fly_by_agent.gd" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="6"]
 [ext_resource type="Script" path="res://examples/fly_by/fly_by_camera.gd" id="7"]
 [ext_resource type="Script" path="res://examples/fly_by/fly_by_markers.gd" id="8"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="9"]
 
 [sub_resource type="PanoramaSkyMaterial" id="SkyMat"]
 panorama = ExtResource("5")
@@ -33,7 +34,16 @@ transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 50, 0)
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 14)
+current = true
 script = ExtResource("7")
+
+[node name="OrbitCamera" type="Camera3D" parent="."]
+current = false
+script = ExtResource("9")
+default_offset = Vector3(0, 6, -16)
+min_distance = 5.0
+max_distance = 60.0
+fallback_camera_path = NodePath("../Camera3D")
 
 [node name="PlaneBody" type="Node3D" parent="."]
 

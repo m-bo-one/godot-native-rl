@@ -77,6 +77,10 @@ func collect_goals(parent: Node) -> Array:
 func get_plane_xform() -> Transform3D:
 	return _plane.transform if _plane != null else _plane_xform_override
 
+# Orbit-camera pivot (#265): the plane position the demo camera orbits around.
+func get_camera_pivot() -> Vector3:
+	return get_plane_xform().origin
+
 func current_goal_pos() -> Vector3:
 	if _goals.is_empty():
 		return Vector3.ZERO

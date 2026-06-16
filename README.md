@@ -110,6 +110,13 @@ same scene, same engine, a different model file, visibly different behaviour, no
 Python. It's the most direct way to show native inference is real and model-driven (great for the
 web demo); pair it with the overlay to watch the obs/action-probabilities change as you swap.
 
+## Orbit camera (3D demos)
+The 3D demos (quadruped walk/hurdles/race, hexapod, rover_3d, fly_by) carry a drop-in `OrbitCamera`
+(`addons/godot_native_rl/camera/orbit_camera.gd`): press **C** to toggle a free orbit camera,
+right-drag to rotate, scroll to zoom — inspect the gait/jumps from any angle. It defaults to the
+fixed follow view and is cosmetic + inert headless (no input → no change), so training/CI are
+unaffected.
+
 ## The moat
 ncnn statically linked enables web/WASM and console deployment (ONNX/.NET can't), game-side INT8
 quantization, async inference, LOD policy switching (`NcnnLODRunner`), and Godot-native ideas (Signal→Reward, `NavMeshSensor`, `AnimationPolicyAdapter`) — none
