@@ -165,3 +165,22 @@ desktop convenience. The examples ship this via the `demo_nav` autoload (`exampl
 which builds an always-on-top "Menu" button on a high `CanvasLayer` — present on every scene without
 per-scene wiring, hidden on the launcher, `focus_mode = FOCUS_NONE` so it never steals the demo's
 keyboard input. Lesson: never rely on a keyboard-only escape hatch for web; provide a clickable one.
+
+## `gh pr`/`gh issue` burn the GraphQL quota — prefer REST for PR automation
+
+`gh pr`, `gh issue`, and `gh repo` subcommands hit GitHub's **GraphQL** API (a 5000-points/hr bucket,
+separate from REST's 5000/hr). Tight CI-watch loops exhaust it fast: an
+`until gh pr checks N; do sleep 60; done` watcher calls GraphQL ~18× per PR (×2 if the loop greps the
+output twice), and several concurrent watchers + parallel agents drain it to 0 — after which every
+`gh pr view/checks/merge` fails with `API rate limit already exceeded`. `gh api rate_limit` (free,
+uncounted) shows which bucket is empty; REST usually still has full budget.
+
+**Rules:**
+- Watch + merge PRs over **REST**, not GraphQL. REST equivalents: `gh api repos/$R/pulls/N`
+  (view), `gh api repos/$R/commits/$SHA/check-runs` (CI status), `gh api -X PUT
+  repos/$R/pulls/N/merge -f merge_method=merge` (merge), `gh api -X DELETE
+  repos/$R/git/refs/heads/$BRANCH` (delete branch). `gh run watch <id>` is also REST.
+- Don't poll every 60s — CI here takes ~18 min, so sleep first, then check at a 2–3 min cadence,
+  one call per poll. Run **one** watcher at a time.
+- Use the helper: **`scripts/dev/pr_merge_when_green.sh <PR#>`** — REST-only "merge on green"
+  (rate_limit-guarded, ~2 REST calls/poll). `--dry-run` to check without merging.
