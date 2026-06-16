@@ -71,6 +71,21 @@ func _initialize() -> void:
 	h.assert_eq(HideSeekMath.step_reward(true, true, true, 5.0), 6.0, "seeker catch -> +1+bonus")
 	h.assert_eq(HideSeekMath.step_reward(false, true, true, 5.0), -6.0, "hider caught -> -1-bonus")
 
+	# --- dense distance shaping (#274): approach term breaks the static-LOS freeze ---
+	# Defaults (approach off, los_weight 1) reproduce the legacy binary reward — asserted above.
+	# Seeker that CLOSES distance (approach +1) is rewarded for it even with no LOS; los_weight 0.2:
+	# r = +0.2*(-1) + 1.0*(+1) = +0.8 > the -0.2 it would get for standing still while blind.
+	h.assert_eq(HideSeekMath.step_reward(true, false, false, 5.0, 1.0, 0.2, 1.0), 0.8,
+		"seeker closing while blind is rewarded (anti-freeze)")
+	h.assert_eq(HideSeekMath.step_reward(true, false, false, 5.0, 0.0, 0.2, 1.0), -0.2,
+		"seeker frozen while blind is penalized")
+	# Hider OPENING distance (approach -1 from the seeker's frame) is rewarded: s=-1, r=-1*0.2*(-1) + -1*1.0*(-1) = 0.2+1.0 = 1.2
+	h.assert_eq(HideSeekMath.step_reward(false, false, false, 5.0, -1.0, 0.2, 1.0), 1.2,
+		"hider opening the gap while hidden is rewarded")
+	# Approach term scales with approach_weight and flips sign with role.
+	h.assert_eq(HideSeekMath.step_reward(true, true, false, 5.0, 0.5, 0.2, 2.0), 1.2,
+		"seeker: 0.2*1 + 2.0*0.5 = 1.2")
+
 	# --- assemble_obs concatenates own + wall + opp + [role] in order ---
 	var obs: Array = HideSeekMath.assemble_obs([0.1, 0.2], [0.3, 0.4], [0.5, 0.6, 0.7, 1.0], 1.0)
 	h.assert_eq(obs.size(), 9, "assembled obs length = 2+2+4+1")

@@ -117,11 +117,25 @@ static func own_pos_obs(pos: Vector2, arena_size: Vector2) -> Array:
 	var y := (pos.y / arena_size.y - 0.5) * 2.0 if arena_size.y > 0.0 else 0.0
 	return [x, y]
 
-# Role-signed reward: +1 (seeker) / -1 (hider) per step when the seeker has LOS to the hider,
-# reversed when blocked; plus a role-signed catch bonus on the frame of capture.
-static func step_reward(is_seeker: bool, has_los: bool, caught: bool, catch_bonus: float) -> float:
+# Role-signed step reward with DENSE distance shaping (#274).
+#
+# The original reward was binary line-of-sight only (+1 seeker / -1 hider per frame the seeker has
+# LOS). That has a degenerate static optimum: once an agent reaches a favorable LOS state, STAYING
+# PUT keeps the reward, so the trained nets froze in place (seeker jammed in a corner, hider
+# motionless) — the demo looked broken even though the aggregate LOS metric passed. The fix adds a
+# dense `approach` term: the seeker is rewarded for REDUCING distance to the hider (driving real
+# pursuit toward a catch), the hider for OPENING it (driving real evasion). A frozen agent earns no
+# approach reward and loses ground when the opponent moves, so standing still is no longer optimal.
+#
+# `approach` is the per-step distance change normalized to ~[-1, 1] (>0 = seeker closed in). The LOS
+# term is kept but weighted down (`los_weight`) so it nudges toward visible pursuit without
+# recreating the static optimum; `approach_weight` scales the shaping. Defaults reproduce the old
+# binary-LOS reward (approach off, los_weight 1) so callers opt in explicitly.
+static func step_reward(is_seeker: bool, has_los: bool, caught: bool, catch_bonus: float,
+		approach := 0.0, los_weight := 1.0, approach_weight := 0.0) -> float:
 	var s := 1.0 if is_seeker else -1.0
-	var r := s * (1.0 if has_los else -1.0)
+	var r := s * los_weight * (1.0 if has_los else -1.0)
+	r += s * approach_weight * approach
 	if caught:
 		r += s * catch_bonus
 	return r

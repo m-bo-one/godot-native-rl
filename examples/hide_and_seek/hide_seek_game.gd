@@ -28,6 +28,7 @@ var _has_los := false
 var _caught := false
 var _terminal := false
 var _pending_reset := false
+var _approach_norm := 0.0   ## per-frame normalized seeker->hider closing rate (#274 dense reward)
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
@@ -72,6 +73,11 @@ func hider_pos() -> Vector2:
 
 func distance() -> float:
 	return seeker_pos().distance_to(hider_pos())
+
+# Per-frame normalized closing rate for the dense reward (#274): >0 = seeker got closer this frame,
+# <0 = hider opened the gap, 0 = no net change (e.g. both frozen). Range ~[-1, 1].
+func approach_norm() -> float:
+	return _approach_norm
 
 # --- Episode lifecycle ---
 func seed_rng(s: int) -> void:
@@ -120,8 +126,15 @@ func _move_body(body: Node2D, vel: Vector2, delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if _pending_reset:
 		reset_positions()
+	# Distance BEFORE this frame's integration (post-reset, so a respawn teleport never spikes the
+	# delta). The dense reward shaping (#274) reads the normalized change after the bodies move.
+	var dist_before := distance()
 	_move_body(_seeker_body, _seeker_vel, delta)
 	_move_body(_hider_body, _hider_vel, delta)
+	# Normalize the closing rate by the max both agents can close in one frame (2 * move_speed * dt),
+	# so `approach` lands in ~[-1, 1]: +1 = seeker closed at full combined speed, -1 = opened fully.
+	var max_close := 2.0 * move_speed * delta
+	_approach_norm = clampf((dist_before - distance()) / max_close, -1.0, 1.0) if max_close > 0.0 else 0.0
 	_step += 1
 	_has_los = not HideSeekMath.segment_blocked(seeker_pos(), hider_pos(), walls)
 	_caught = _has_los and distance() < catch_radius

@@ -9,6 +9,11 @@ const HideSeekMath = preload("res://examples/hide_and_seek/hide_seek_math.gd")
 @export var game_path: NodePath
 @export var is_seeker := false
 @export var catch_bonus := 5.0
+# Dense reward shaping (#274): los_weight scales the (kept-but-reduced) line-of-sight term;
+# approach_weight scales the per-frame distance-closing term that drives real pursuit/evasion and
+# breaks the old static-LOS freeze. los_weight < approach so LOS only nudges, never dominates.
+@export var los_weight := 0.2
+@export var approach_weight := 1.0
 @export var ray_count := 8
 @export var ray_length := 400.0
 
@@ -83,7 +88,8 @@ func _physics_process(delta: float) -> void:
 	# terminal (catch) lands mid-window the game resets next frame and a few new-episode step rewards
 	# join this bucket — bounded (<=1 terminal/window via min_separation; small vs catch_bonus) and
 	# harmless to PPO, matching how chase/rover treat the action_repeat window.
-	reward += HideSeekMath.step_reward(is_seeker, _game.has_los(), _game.was_caught(), catch_bonus)
+	reward += HideSeekMath.step_reward(is_seeker, _game.has_los(), _game.was_caught(), catch_bonus,
+		_game.approach_norm(), los_weight, approach_weight)
 	# Both agents read the same terminal flag in the same frame -> they end together. The game
 	# resets positions itself (next frame); agents only reset their own controller state. Do NOT
 	# zero_reward() here — the bridge reads reward + done together, then zeroes reward.
