@@ -7,6 +7,7 @@
 [node name="HideSeekMultiPolicyEval" type="Node2D"]
 
 [node name="HideSeekWorld" parent="." instance=ExtResource("1")]
+catch_radius = 60.0
 
 [node name="Seeker" parent="HideSeekWorld" index="2"]
 control_mode = 3
@@ -28,4 +29,6 @@ game_path = NodePath("../HideSeekWorld")
 seeker_path = NodePath("../HideSeekWorld/Seeker")
 hider_path = NodePath("../HideSeekWorld/Hider")
 frames_to_run = 3000
-min_los_fraction = 0.08
+min_los_fraction = 0.3
+min_seeker_motion = 6000.0
+min_catches = 1

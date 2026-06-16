@@ -7,6 +7,7 @@
 [node name="HideSeekMultiPolicy" type="Node2D"]
 
 [node name="HideSeekWorld" parent="." instance=ExtResource("1")]
+catch_radius = 60.0
 
 [node name="Seeker" parent="HideSeekWorld" index="2"]
 control_mode = 3
