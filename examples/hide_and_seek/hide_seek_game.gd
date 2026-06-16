@@ -45,8 +45,13 @@ func clamp_to_bounds(pos: Vector2) -> Vector2:
 	return Vector2(clampf(pos.x, 0.0, arena_size.x), clampf(pos.y, 0.0, arena_size.y))
 
 func default_walls() -> Array[Rect2]:
-	# Two vertical blocks that carve sight-lines into the arena.
-	return [Rect2(300, 120, 60, 360), Rect2(640, 120, 60, 360)]
+	# Two SMALL staggered blocks (#274): one upper, one lower, each ~30% of arena height with open
+	# lanes around them. The original two full-height (360px) blocks walled off the arena — the hider
+	# trivially broke line-of-sight and the LOS-gated seeker, blind to an occluded target, wandered
+	# into walls. Smaller staggered occluders keep "hide & seek" flavour (brief breaks behind a block)
+	# while letting the seeker re-acquire and PURSUE, so the dense distance-closing reward produces a
+	# legible chase instead of a blind stall.
+	return [Rect2(330, 70, 60, 180), Rect2(610, 350, 60, 180)]
 
 # --- Velocity setters (called by the agents; applied next physics frame) ---
 func set_seeker_velocity(v: Vector2) -> void:
