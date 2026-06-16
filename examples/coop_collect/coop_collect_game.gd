@@ -20,6 +20,10 @@ const M = preload("res://examples/coop_collect/coop_collect_math.gd")
 ## Default 0.0 = OFF (team reward byte-identical) — the training scenes set it; deploy ignores reward.
 @export var clump_weight := 0.0
 @export var clump_radius := 250.0
+## Dense nearest-item distance shaping (#275): per-frame team reward for closing in on the nearest
+## uncollected items. 0 = OFF (team reward unchanged); the training world enables it so the actor can
+## learn randomized collection (the sparse collect-only reward gives ~no gradient under random scatter).
+@export var item_approach_weight := 0.0
 @export var max_steps := 400            ## episode timeout (frames)
 @export var item_norm := 1200.0         ## normalizer for relative-position obs
 @export var item_count := 4
@@ -87,6 +91,10 @@ func _physics_process(delta: float) -> void:
 		reset_positions()
 		_pending_reset = false
 		return
+	# Nearest-item potential BEFORE moving (current positions, current collected set) — for the dense
+	# distance shaping (#275). Measured against the SAME collected set before and after the move so a
+	# collection's discrete drop never leaks into the movement-progress term.
+	var nearest_before := M.sum_nearest_item_distance(active_agent_positions(), _items, _collected)
 	# Integrate velocities (kinematic), clamp to bounds. A banked agent is inert (parked, no move).
 	for i in range(_bodies.size()):
 		if _bodies[i] == null:
@@ -94,6 +102,8 @@ func _physics_process(delta: float) -> void:
 		if early_finish and _banked[i]:
 			continue
 		_bodies[i].position = clamp_to_bounds(_bodies[i].position + _vels[i] * delta)
+	# Nearest-item potential AFTER moving but BEFORE collection (same collected set) -> pure movement progress.
+	var nearest_after := M.sum_nearest_item_distance(active_agent_positions(), _items, _collected)
 	# Resolve collection against the ACTIVE agents' positions, compute the shared team reward.
 	var newly := M.collect_step(_items, _collected, active_agent_positions(), collect_radius)
 	# In early-finish mode the per-step time penalty scales with the number of ACTIVE agents, so a
@@ -107,6 +117,15 @@ func _physics_process(delta: float) -> void:
 	# Coverage signal: discourage the agents bunching while items remain (clump_weight 0 -> no-op).
 	var items_remaining := item_count - M.count_collected(_collected)
 	_team_reward -= M.coverage_penalty(active_agent_positions(), items_remaining, clump_radius, clump_weight)
+	# Dense distance shaping (#275): reward the team for CLOSING the gap to the nearest items this
+	# frame. Potential-based (delta of a potential), normalized by the max the active agents could
+	# close in one frame (n * move_speed * dt), so it telescopes over a trajectory and can't be farmed
+	# by oscillating. item_approach_weight 0 -> no-op (deploy ignores reward; the training world sets it).
+	var n_active := active_agent_positions().size()
+	if item_approach_weight > 0.0 and n_active > 0:
+		var max_close := float(n_active) * move_speed * delta
+		var progress: float = (nearest_before - nearest_after) / max_close if max_close > 0.0 else 0.0
+		_team_reward += item_approach_weight * clampf(progress, -1.0, 1.0)
 	# Early-finish: an active agent in the bank zone (after a team contribution) banks out, parks,
 	# and adds a one-time bank bonus to the shared team reward. Its earlier collecting actions still
 	# get credit for the team reward earned AFTER it leaves (posthumous credit — the trainer masks it).
