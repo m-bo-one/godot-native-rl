@@ -27,6 +27,11 @@ const M = preload("res://examples/coop_collect/coop_collect_math.gd")
 @export var max_steps := 400            ## episode timeout (frames)
 @export var item_norm := 1200.0         ## normalizer for relative-position obs
 @export var item_count := 4
+## Item spawn keep-out from the walls (#275). The default 60 scatters items across the whole arena
+## (corners included) — too hard for a 2-agent team to clear in one episode under randomization. A
+## larger margin keeps the randomized layout in the reachable central band, so the demo stays varied
+## AND collectable. Train and deploy use the SAME value so the net isn't asked to generalize off-dist.
+@export var spawn_margin := 60.0
 @export var seed_value := 12345         ## deterministic item layout (seeded)
 ## Re-randomize the item layout each episode (play/showcase). Default false keeps the seeded,
 ## reproducible layout that training, replays, and the golden/behavioral regressions depend on.
@@ -65,7 +70,7 @@ func _ready() -> void:
 
 func _spawn_items() -> void:
 	# Layout from the current RNG state (seeded for reproducibility, or randomized for the showcase).
-	_items.assign(M.item_layout(_rng, item_count, arena_size, 60.0))
+	_items.assign(M.item_layout(_rng, item_count, arena_size, spawn_margin))
 	_collected = []
 	_collected.resize(item_count)
 	_collected.fill(false)
