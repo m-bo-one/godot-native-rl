@@ -17,11 +17,12 @@ const OBS: Array = [
 	[0.0, 0.0, 0.3, -0.2, 0.4, 0.1, 1.0, -0.3, 0.2, 0.0, 0.1, 0.5, 1.0, -0.4, -0.1, 0.0],
 ]
 
-# Recorded baseline (5 move logits per obs) from the shipped MA-POCA actor (#253 coverage retrain).
+# Recorded baseline (5 move logits per obs) from the shipped MA-POCA actor (#275 randomized-collection
+# retrain: dense nearest-item shaping + central spawn band).
 const GOLDEN: Array = [
-	[1.501953, 1.654297, 3.082031, 1.932617, -6.480469],
-	[1.027344, 0.189087, 5.882812, 0.962402, -7.156250],
-	[1.566406, 1.364258, 5.074219, 1.917969, -8.343750],
+	[0.381348, -3.328125, 2.632813, 1.763672, -1.007812],
+	[0.689941, -0.430908, 1.752930, 4.308594, -3.988281],
+	[0.924805, -0.827148, 2.542969, 6.042969, -5.480469],
 ]
 
 func _initialize() -> void:

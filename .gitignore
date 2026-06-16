@@ -62,3 +62,7 @@ media/*.import
 
 # Installed by the plugin from addons/godot_native_rl/script_templates/ (editor-enable side effect)
 /script_templates/
+# Coop MA-POCA training artifacts (deploy net lives in examples/coop_collect/models/)
+models/coop_mapoca.zip
+models/coop_mapoca.pt
+models/coop_mapoca.pt.shape.json
