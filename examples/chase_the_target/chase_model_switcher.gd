@@ -19,9 +19,13 @@ const MARGIN_PX := 8
 		"bin": "res://examples/chase_the_target/models/chase_the_target.ncnn.bin",
 	},
 	{
-		"label": "Untrained policy (random init)",
-		"param": "res://examples/chase_the_target/models/chase_dummy.ncnn.param",
-		"bin": "res://examples/chase_the_target/models/chase_dummy.ncnn.bin",
+		# Partially-trained (~2k-step) checkpoint (#273): visibly weaker but still PURPOSEFUL —
+		# catches ~8/1800 frames vs the trained net's ~15 (and the random-init dummy's ~0). Swapping
+		# Trained <-> Partial shows a learning GRADIENT (early-but-improving -> fully trained), which
+		# tells a far better story than the old random-init entry that just jittered.
+		"label": "Partially-trained policy (~2k steps)",
+		"param": "res://examples/chase_the_target/models/chase_partial.ncnn.param",
+		"bin": "res://examples/chase_the_target/models/chase_partial.ncnn.bin",
 	},
 ]
 @export var agent_group := "AGENT"  # swap every inference agent in this group

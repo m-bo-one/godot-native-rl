@@ -34,6 +34,27 @@ static func nearest_agent_dist(item_pos: Vector2, agent_positions: Array) -> flo
 		best = minf(best, item_pos.distance_to(p))
 	return best
 
+# Sum over agents of each agent's distance to its NEAREST UNCOLLECTED item — the dense-shaping
+# potential for randomized layouts (#275). The collect-only reward is SPARSE: agents only get a
+# signal at the instant an item is collected, so under random scatter they almost never stumble onto
+# one by luck and get ~no learning gradient (brute-force retrain on full random stalled at a flat
+# negative reward). Rewarding the per-frame REDUCTION of this sum gives continuous guidance toward
+# items on ANY layout. Team-level (summed over agents) so the shared-reward invariant holds. Agents
+# with no uncollected item left contribute 0.
+static func sum_nearest_item_distance(agent_positions: Array, item_positions: Array, collected: Array) -> float:
+	var total := 0.0
+	for ap in agent_positions:
+		var best := -1.0
+		for i in range(item_positions.size()):
+			if i < collected.size() and collected[i]:
+				continue
+			var d: float = (ap as Vector2).distance_to(item_positions[i])
+			if best < 0.0 or d < best:
+				best = d
+		if best > 0.0:
+			total += best
+	return total
+
 # Resolve one step of collection. Returns the number of items NEWLY collected this step and mutates
 # `collected` in place (a bool per item). An already-collected item is skipped. Pure aside from the
 # explicit in-out `collected` array.

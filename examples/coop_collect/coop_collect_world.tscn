@@ -5,6 +5,9 @@
 
 [node name="CoopCollectGame" type="Node2D"]
 script = ExtResource("1")
+randomize_items = true
+item_approach_weight = 0.05
+spawn_margin = 200.0
 agent_a_body_path = NodePath("AgentABody")
 agent_b_body_path = NodePath("AgentBBody")
 clump_weight = 0.02
