@@ -11,6 +11,9 @@ const TRAINED_PARAM := "res://examples/chase_the_target/models/chase_the_target.
 const TRAINED_BIN := "res://examples/chase_the_target/models/chase_the_target.ncnn.bin"
 const DUMMY_PARAM := "res://examples/chase_the_target/models/chase_dummy.ncnn.param"
 const DUMMY_BIN := "res://examples/chase_the_target/models/chase_dummy.ncnn.bin"
+# Partially-trained fixture for the policy-swap demo's learning-gradient entry (#273).
+const PARTIAL_PARAM := "res://examples/chase_the_target/models/chase_partial.ncnn.param"
+const PARTIAL_BIN := "res://examples/chase_the_target/models/chase_partial.ncnn.bin"
 
 func _initialize() -> void:
 	var h := Harness.new()
@@ -42,6 +45,17 @@ func _initialize() -> void:
 		var got := runner.run_discrete_action(
 			PackedFloat32Array([0.5479, -0.1222, 0.7172, 0.3947, -0.8116]))
 		h.assert_eq(got, 2, "trained model reproduces golden argmax after swap-back")
+
+		# The new partially-trained dropdown entry (#273) hot-swaps in and infers a valid discrete
+		# action — guards the committed chase_partial.ncnn fixture loads through the same path. Its
+		# argmax is NOT golden-pinned (an early checkpoint is deliberately weaker/erratic), so assert
+		# membership in the 4-action space rather than a fixed value.
+		h.assert_true(a.swap_model(PARTIAL_PARAM, PARTIAL_BIN), "swap to partially-trained model")
+		h.assert_true(runner.is_model_loaded(), "runner loaded after swap to partial")
+		var pa := runner.run_discrete_action(
+			PackedFloat32Array([0.5479, -0.1222, 0.7172, 0.3947, -0.8116]))
+		h.assert_true(pa >= 0 and pa <= 4, "partial model infers a valid discrete action")
+		h.assert_true(a.swap_model(TRAINED_PARAM, TRAINED_BIN), "swap back to trained after partial")
 
 	# Precondition guards fail loud (return false), they do not crash. The push_error these emit is
 	# expected and does not fail the suite (failures are by exit code, not stderr).

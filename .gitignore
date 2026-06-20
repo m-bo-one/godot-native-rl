@@ -33,6 +33,8 @@ models/*_pnnx.py
 .venv-train/
 logs/
 models/chase_policy.*
+models/chase_partial.*
+models/chase_partial_ckpts/
 models/rover_checkpoints/
 # Self-play league artifacts (#29): pools of frozen snapshots + ELO ledgers + phase temps
 models/selfplay_pool/
