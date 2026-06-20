@@ -39,6 +39,18 @@ func _initialize() -> void:
 	h.assert_true(absf(M.nearest_agent_dist(Vector2(0, 0), [Vector2(3, 4), Vector2(10, 0)]) - 5.0) < 1e-5, "nearest_agent_dist")
 	h.assert_true(is_inf(M.nearest_agent_dist(Vector2(0, 0), [])), "nearest_agent_dist no agents -> INF")
 
+	# sum_nearest_item_distance (#275 dense shaping potential): each agent's distance to its nearest
+	# UNCOLLECTED item, summed; collected items are skipped; no item left -> 0 contribution.
+	var its := [Vector2(0, 0), Vector2(100, 0)]
+	# Agent at (3,4) -> nearest is item0 at dist 5; agent at (110,0) -> nearest is item1 at dist 10. Sum 15.
+	h.assert_true(absf(M.sum_nearest_item_distance([Vector2(3, 4), Vector2(110, 0)], its, [false, false]) - 15.0) < 1e-5,
+		"sum_nearest_item_distance two agents")
+	# Item0 collected -> the (3,4) agent must fall back to item1 at dist ~97.08; second agent still 10.
+	h.assert_true(absf(M.sum_nearest_item_distance([Vector2(3, 4), Vector2(110, 0)], its, [true, false]) - (Vector2(3, 4).distance_to(Vector2(100, 0)) + 10.0)) < 1e-4,
+		"collected item is skipped")
+	# All collected -> 0 (nothing to approach).
+	h.assert_eq(M.sum_nearest_item_distance([Vector2(3, 4)], its, [true, true]), 0.0, "no uncollected items -> 0")
+
 	# collect_step: an in-range uncollected item is collected; already-collected skipped.
 	var items := [Vector2(0, 0), Vector2(100, 0), Vector2(500, 500)]
 	var collected := [false, false, false]
