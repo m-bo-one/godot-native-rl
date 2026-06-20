@@ -35,7 +35,11 @@ env:
   # v2: NCNN_OPENMP=OFF (#103). The ncnn/bin cache keys don't encode cmake flags, so the bump
   # forces a cold rebuild — a cached OpenMP libncnn.a linked without -lgomp would yield a .so
   # with undefined GOMP_* symbols that fails to load.
-  CACHE_VERSION: "v2"
+  # v3: bust the stale Python venv cache — the cached venvs were created with symlinked interpreters
+  # (`python -m venv`), so when setup-python installed a newer 3.14/3.12 patch at a new path the
+  # restored `.venv/bin/python` symlink dangled -> "No such file" -> exit 127. Recreated with
+  # `--copies` below so the venv carries a real interpreter binary and survives base-python moves.
+  CACHE_VERSION: "v3"
   # Cap CMake build parallelism. ncnn's SIMD/INT8 translation units are memory-heavy; compiling
   # at full -j(nproc) (4 on the standard runner) OOM-kills cc1plus on the 16 GB runner. 2 stays
   # well under the limit. Governs both our `cmake --build` and build_ncnn_tools.sh's `--parallel`.
@@ -238,7 +242,9 @@ jobs:
           # subsequent requirements install never reaches for the CUDA build.
           TORCH_CPU_INDEX="https://download.pytorch.org/whl/cpu"
           # Convert venv (3.14): no constraints — pnnx + torch only, numpy resolves to 2.x cleanly.
-          python3.14 -m venv .venv
+          # --copies: bake a real interpreter binary into the venv (not a symlink to setup-python's
+          # 3.14) so the cached venv survives a newer Python patch landing at a different path (#CI).
+          python3.14 -m venv --copies .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install --index-url "$TORCH_CPU_INDEX" torch
           .venv/bin/pip install -r requirements-convert.txt
@@ -247,7 +253,7 @@ jobs:
           # <=1.0.0 caps conflict with the SB3 2.8.0 / gymnasium 1.2.2 stack; runtime-compatible).
           # CI omits the ray add-on (requirements-rllib.txt) to keep the cached venv small — the
           # RLlib smoke in run_tests.sh skips when ray is absent.
-          python3.12 -m venv .venv-train
+          python3.12 -m venv --copies .venv-train
           .venv-train/bin/pip install --upgrade pip
           .venv-train/bin/pip install --index-url "$TORCH_CPU_INDEX" torch
           .venv-train/bin/pip install -c .github/ci-constraints.txt -r requirements-train.txt
