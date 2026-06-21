@@ -15,15 +15,18 @@ extends SceneTree
 
 const Harness = preload("res://test/harness.gd")
 
+# Obs chosen so BOTH nets decide with a comfortable top-2 margin (>= 0.92 here) — re-picked for the
+# #274 reduced-walls + dense-reward retrain (the prior obs gave the new nets near-tie 0.16 margins
+# that would flip across CPU architectures, the #241 failure mode).
 const OBS: Array = [
-	[0.04,-0.62,0.32,0.88,-0.88,-0.29,0.62,0.84,0.41,0.38,-0.47,0.76,0.01,0.82, 1.0],
-	[-0.1,-0.27,0.43,-0.47,0.74,0.7,0.67,0.75,-0.06,0.24,-0.63,-0.39,-0.94,0.45, 1.0],
-	[0.76,-0.94,0.67,-0.11,0.4,-0.21,-0.33,0.5,0.84,0.27,0.61,0.8,0.52,0.49, 1.0],
-	[0.57,-0.34,-0.88,0.27,-0.58,0.52,0.99,0.36,-0.98,-0.01,0.16,0.16,-0.65,0.34, 1.0],
-	[-0.5,-0.4,-0.23,0.34,-0.67,0.44,-0.46,0.11,0.49,0.45,-0.15,0.27,-0.4,0.65, 1.0],
+	[-0.35,0.18,-0.83,-0.97,-0.05,-0.31,0.62,-0.91,-0.39,-0.36,-0.57,-0.06,0.93,-0.73, 1.0],
+	[0.05,0.54,-0.69,0.25,-0.21,0.12,0.47,0.0,-0.59,-0.93,-0.99,-0.83,-0.95,0.97, 1.0],
+	[-0.69,0.93,0.65,0.59,0.73,0.38,0.83,-0.16,0.28,-0.25,0.15,0.58,-0.95,-0.05, 1.0],
+	[0.12,-0.99,-0.52,-0.79,0.75,0.56,0.59,0.66,0.0,0.34,-0.8,0.46,-0.03,-0.69, 1.0],
+	[-0.96,0.21,-0.3,-0.61,-0.9,0.95,-0.56,-0.55,0.3,0.78,0.39,0.6,0.96,-0.77, 1.0],
 ]
-const EXPECTED_SEEKER: Array = [0, 0, 4, 0, 0]  # captured from the real ncnn deploy path (role 1.0)
-const EXPECTED_HIDER: Array  = [4, 4, 3, 4, 4]  # captured from the real ncnn deploy path (role 0.0)
+const EXPECTED_SEEKER: Array = [2, 3, 2, 2, 2]  # captured from the real ncnn deploy path (role 1.0)
+const EXPECTED_HIDER: Array  = [0, 4, 0, 0, 3]  # captured from the real ncnn deploy path (role 0.0)
 
 func _check(h, tag: String, base: String, expected: Array, role_flag: float) -> void:
 	var runner := NcnnRunner.new()

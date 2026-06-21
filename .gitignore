@@ -64,6 +64,10 @@ media/*.import
 
 # Installed by the plugin from addons/godot_native_rl/script_templates/ (editor-enable side effect)
 /script_templates/
+# Hide & seek multipolicy training artifacts (deploy nets in examples/hide_and_seek/models/)
+models/hide_seek_seeker.pt
+models/hide_seek_hider.pt
+models/hide_seek_*.pt.shape.json
 # Coop MA-POCA training artifacts (deploy net lives in examples/coop_collect/models/)
 models/coop_mapoca.zip
 models/coop_mapoca.pt
