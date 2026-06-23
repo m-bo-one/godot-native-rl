@@ -51,17 +51,52 @@ func _make_hurdle(z: float, height: float) -> StaticBody3D:
 	body.collision_layer = 2
 	body.collision_mask = 0
 	body.position = Vector3(0.0, height / 2.0, z)
+	# The collision box drives the closeness RaycastSensor3D (the net's hurdle perception). It is kept
+	# at the TRAINED height and left MESH-LESS (invisible) so the deployed policy behaves byte-identically
+	# (#277 is cosmetic-only — no retrain). By design the hurdles never physically collide with the
+	# creature (collision_mask = 0), so a full-height visible box looked like the creature running THROUGH
+	# a wall. The visible mesh below is decoupled from this box.
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(hurdle_width, height, hurdle_depth)
 	col.shape = shape
 	body.add_child(col)
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = shape.size
-	mesh.mesh = box
-	body.add_child(mesh)
+	# Visible hurdle (#277): a low, bright athletic-hurdle gate (two standards + a crossbar) the trotting
+	# gait visibly clears, with a crossbar height that clearly ASCENDS along the track. Decoupled from the
+	# invisible sensor box so the demo reads as "clearing ascending hurdles" without changing what the net
+	# senses or does.
+	body.add_child(_make_hurdle_visual(height))
 	return body
+
+# Pure-ish visual builder: a hurdle gate sitting on the ground (it undoes the body's y offset), whose
+# crossbar height maps the trained collision height onto a low, clearable, clearly-ascending range.
+func _make_hurdle_visual(height: float) -> Node3D:
+	var gate := Node3D.new()
+	gate.position = Vector3(0.0, -height / 2.0, 0.0)  # build from ground up (cancel the body's y offset)
+	# Map the trained height [hurdle_height, hurdle_height_max] -> a low visible range so the bar stays
+	# below the torso (the gait clears it) yet the ascent is obvious. Uniform-height tracks -> all low.
+	var span: float = maxf(0.001, hurdle_height_max - hurdle_height)
+	var t: float = clampf((height - hurdle_height) / span, 0.0, 1.0) if hurdle_height_max > hurdle_height else 0.0
+	var bar_h: float = lerpf(0.10, 0.24, t)
+	var half_w := 0.9
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.95, 0.45, 0.1)  # bright orange — reads as a hurdle
+	for sx in [-half_w, half_w]:
+		var post := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.06, bar_h, 0.06)
+		post.mesh = pm
+		post.material_override = mat
+		post.position = Vector3(sx, bar_h / 2.0, 0.0)
+		gate.add_child(post)
+	var bar := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(2.0 * half_w + 0.06, 0.06, maxf(hurdle_depth, 0.08))
+	bar.mesh = bm
+	bar.material_override = mat
+	bar.position = Vector3(0.0, bar_h, 0.0)
+	gate.add_child(bar)
+	return gate
 
 # How many hurdles `torso_z` has newly moved past since the last call. Monotonic within an
 # episode; pays each hurdle once. Falling ends the episode via the agent's fall terminal, so a
