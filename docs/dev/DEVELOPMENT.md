@@ -57,6 +57,16 @@ isolated temp dir + parity verify) → `models/*.ncnn.{param,bin}` → loaded by
 Parity is checked at `atol=1e-2` (torch-dynamo vs ncnn InnerProduct drift; argmax is stable). godot_rl
 policies convert to blob names `in0`/`out0` (pnnx prunes the vestigial `state_ins` input).
 
+**The one flow with no conversion at all:** the native in-engine ES trainer (#131). `ESTrainer`
+evolves a flat θ, `training/ncnn_weights.gd` renders it straight to ncnn `.param`/`.bin` buffers
+(the same format `export_statedict_to_ncnn.py` writes), and `load_model_from_buffers` makes it a
+live net — train → checkpoint → deploy is a single format end-to-end. Design:
+`docs/superpowers/specs/2026-07-02-native-es-trainer-design.md`. Buffer-lifetime gotcha: ncnn's
+memory reader makes loaded nets ALIAS the buffer they were read from (zero-copy `reference()`);
+since this feature's PR `load_model_from_buffers` reads from a runner-owned private copy that
+outlives the net (see docs/dev/gotchas.md — incl. why a DataReader subclass is not an option on
+iOS).
+
 ## The inference-backend boundary (swappable runtime)
 
 The deploy runtime is a **pluggable seam, not hardcoded**. `NcnnControllerCore.choose_and_apply_action(agent,

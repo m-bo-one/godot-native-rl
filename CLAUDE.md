@@ -156,6 +156,25 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   SCENE=res://examples/quadruped_walk/quadruped_hurdles_train_parallel.tscn ./scripts/train_quadruped.sh`
   — same trainer, hurdles world (35-dim obs incl. 6 hurdle rays), 3-stage curriculum promotes
   game-side; `OUT=` redirects the save/export stem, `CKPT_DIR=` the snapshot dir.
+- **Train IN-ENGINE (ES — no Python, no socket, no backprop):** `godot --headless --path .
+  res://examples/chase_the_target/chase_es_train.tscn` — the native ES trainer (#131): `ESTrainer`
+  node (drop-in for `NcnnSync`; same agent contract, `action_repeat`/`speed_up`) evolves a flat θ
+  via OpenAI-ES (`training/es_math.gd`, pure), turns each candidate into a live ncnn net in memory
+  (`training/ncnn_weights.gd` θ⇄buffers codec — bijective, so `warm_start_*_path` fine-tunes a
+  shipped net on-device), fitness = episodic return from the existing reward system. Checkpoints
+  ARE deploy artifacts (`.ncnn.{param,bin}` in `out_dir`); multi-agent scenes evaluate candidates
+  in parallel waves; fitness comparability is built in (common-random-numbers `seed_games` via the
+  agent's `game_path`, k-episode averaging `episodes_per_candidate`, trainer-owned horizon
+  `episode_decisions` — agents' `reset_after` is overridden so a self-reset can't zero the tail
+  reward before the trainer reads it). Proven live: `chase_es_train_parallel.tscn` (8 tiled worlds
+  via `ParallelArena2D`) took mean fitness −0.9 → **13.5** in 400 generations (~25 min); the best
+  net ships as `examples/chase_the_target/models/chase_es.ncnn.*` with a behavioral regression
+  (`trained_es_chase_scene.tscn`, 19 catches/1800 frames through the standard inference
+  controller). Small nets + dense rewards only (ES is sample-inefficient).
+  **Gotcha found here:** ncnn's from-memory load ALIASES the source buffer (`DataReaderFromMemory`
+  zero-copy) — the runner reads from a private owned copy that outlives the net; never assume a
+  from-memory load copied the weights. (And never SUBCLASS ncnn classes in the extension — iOS
+  links ncnn without RTTI, so the base `typeinfo` is undefined.)
 - **Train (chase, CleanRL backend):** `./scripts/train_cleanrl.sh` — single-file CleanRL-style PPO over
   godot_rl's `CleanRLGodotEnv` (same chase scene + port 11008; `TIMESTEPS`/`SPEEDUP`/`ACTION_REPEAT`
   overrides). Exports ONNX (`models/chase_cleanrl_policy.onnx`) consumable unchanged by `export_to_ncnn.py`.
@@ -392,6 +411,7 @@ console deployment (no .NET cert issues), INT8 quantization game-side, **async i
 (`NcnnRunner.run_inference_async` + `inference_completed` signal, off-thread forward pass — #19),
 thread-parallel batched crowd inference (`run_inference_batch` + `NcnnCrowdController`, one shared `Net`),
 LOD policy switching (`NcnnLODRunner` — cheap reflex net every frame, accurate net every N / on state
-change, #21), and Godot-native ideas (Signal→Reward, `NavMeshSensor2D/3D` (navigable path obs, #20), `AnimationPolicyAdapter`
+change, #21), **native in-engine ES training** (`ESTrainer` — no Python/socket/backprop, runs on every
+deploy target incl. web, the checkpoint IS the deploy artifact, #131), and Godot-native ideas (Signal→Reward, `NavMeshSensor2D/3D` (navigable path obs, #20), `AnimationPolicyAdapter`
 — policy actions → `AnimationTree` blend params, #22) — none replicable by
 a Python-server framework or a managed-runtime one. Lead with these in all docs.

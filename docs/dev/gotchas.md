@@ -138,6 +138,27 @@ stays as a best-effort nudge; an atomic exchange makes delivery single-shot rega
 site fires first. Lesson: don't rely on a non-Godot worker thread's deferred call being flushed in
 every host; drain on the main thread you control.
 
+## ncnn's from-memory model load ALIASES the source buffer (use-after-free)
+
+ncnn's `ModelBinFromDataReader` prefers `DataReaderFromMemory::reference()`, so a `Net` loaded
+via ncnn's own memory reader keeps weight `Mat`s **pointing into the caller's bin buffer**
+instead of copying. Any caller whose buffer was a local (`FileAccess.get_file_as_bytes` into a
+var, or a freshly built candidate bin) had dangling weights the moment it went out of scope —
+outputs corrupt **nondeterministically** when the freed block is reused. `NcnnCrowdController`
+and `NcnnLODRunner` were affected in production; the 2D/3D controllers survived only because
+their `_last_bin_bytes` member happened to pin the buffer. Surfaced by the ES trainer's
+round-trip golden (#131): identical back-to-back runs printed different forward passes. Fix:
+`load_model_from_buffers` copies the bin bytes into a runner-owned `std::vector` (declared
+BEFORE `net_`, so the net and its aliasing Mats tear down first in `~NcnnRunner`) and feeds
+`DataReaderFromMemory` that private copy — the aliased memory now lives exactly as long as the
+net. Two rejected fixes, for the record: retaining the caller's `PackedByteArray` as a member
+re-created the hazard via member destruction order (declared after `net_` → destroyed first);
+a `reference()`-less `DataReader` subclass forced a copy elegantly but **doesn't link on iOS**
+(ncnn is built without RTTI there — `typeinfo for ncnn::DataReader` is undefined, so never
+subclass ncnn classes in the extension). Lesson: never assume a from-memory model load copied
+its input — check the reader for zero-copy `reference()` support, and pin the source to the
+consumer's lifetime, minding member destruction order.
+
 ## Position-based rewards must use TILE-LOCAL coordinates under ParallelArena
 
 `ParallelArena` isolates the N training worlds spatially — it tiles them hundreds of units apart on

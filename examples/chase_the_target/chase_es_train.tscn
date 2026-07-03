@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://examples/chase_the_target/chase_world.tscn" id="1"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/training/es_trainer.gd" id="2"]
+
+[node name="ChaseESTrain" type="Node2D"]
+
+[node name="ChaseWorld" parent="." instance=ExtResource("1")]
+
+[node name="ESTrainer" type="Node" parent="."]
+script = ExtResource("2")
+hidden_dims = [16]
+half_population = 8
+sigma = 0.4
+alpha = 0.1
+generations = 100
+episode_decisions = 112
+episodes_per_candidate = 2
+speed_up = 50.0
+out_dir = "user://es_checkpoints/chase"
+checkpoint_stem = "chase_es"
+exit_on_finish = true

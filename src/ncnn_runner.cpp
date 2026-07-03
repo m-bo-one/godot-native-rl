@@ -67,6 +67,9 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
 
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
+    // The old net (the only consumer of a previous buffer-load's copy) is gone — release the
+    // copy NOW so no failure path below can leave a netless runner pinning stale weights.
+    bin_copy_.clear();
 
     const CharString param_utf8 = p_param_path.utf8();
     const CharString bin_utf8 = p_bin_path.utf8();
@@ -100,6 +103,9 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
 
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
+    // The old net (the only consumer of the previous copy) is gone — release the copy NOW so
+    // the param-failure path below can't leave a netless runner pinning stale weights.
+    bin_copy_.clear();
 
     // ncnn's load_param_mem() needs a NUL-terminated C string of the text .param.
     std::vector<char> param_text(p_param.size() + 1);
@@ -113,15 +119,21 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
         return false;
     }
 
-    // The .bin weights load from an advancing memory cursor via DataReaderFromMemory.
-    // DataReaderFromMemory carries no length bound, so the .bin/.param are trusted
-    // app-bundled assets (same trust model as the path-based load_model).
-    const unsigned char *bin_cursor = reinterpret_cast<const unsigned char *>(p_bin.ptr());
+    // The .bin weights load from an advancing memory cursor via DataReaderFromMemory, whose
+    // reference() support makes the Net's weight Mats ALIAS the memory they were read from —
+    // so read from a PRIVATE copy this runner owns (bin_copy_; see the header comment), never
+    // from the caller's PackedByteArray, or a temporary argument is a use-after-free. The old
+    // net_ was destroyed above, so replacing the previous copy here is safe. The reader carries
+    // no length bound: the .bin/.param are trusted app-bundled assets (same trust model as the
+    // path-based load_model).
+    bin_copy_.assign(p_bin.ptr(), p_bin.ptr() + p_bin.size());
+    const unsigned char *bin_cursor = bin_copy_.data();
     ncnn::DataReaderFromMemory bin_reader(bin_cursor);
     const int bin_result = net_->load_model(bin_reader);
     if (bin_result != 0) {
         UtilityFunctions::push_error("NcnnRunner.load_model_from_buffers: failed to load bin buffer.");
         net_.reset();
+        bin_copy_.clear();
         return false;
     }
 
@@ -237,6 +249,13 @@ Array NcnnRunner::run_inference_batch(const Array &p_inputs, int p_num_threads) 
     Array result;
     if (!model_loaded_ || !net_) {
         UtilityFunctions::push_error("NcnnRunner.run_inference_batch: model is not loaded.");
+        return result;
+    }
+    // The batch path writes net_->opt.num_threads below while an in-flight async worker would
+    // read net_->opt through create_extractor() — an unsynchronized C++ data race. Refuse the
+    // overlap loudly (mirrors ready_to_swap_net's model-reload guard).
+    if (inference_running_.load()) {
+        UtilityFunctions::push_error("NcnnRunner.run_inference_batch: an async inference is in flight; wait for inference_completed first.");
         return result;
     }
     const int n = p_inputs.size();
