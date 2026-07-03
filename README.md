@@ -15,6 +15,12 @@ Python stack; deploy native on web/WASM, console, mobile, desktop, and edge.
 
 ▶ **[Watch the demo on YouTube](https://youtu.be/Cud1gvbjg0I)** — trained agents running on native ncnn, no Python at runtime.
 
+🕹️ **[Play it in your browser](https://minigraphx.github.io/godot-native-rl/)** — the demo launcher as a
+web build (single-threaded WASM, published from `main` by `.github/workflows/deploy-web-demo.yml`).
+Pick **"Evolution Lab (train LIVE)"** and the browser tab *trains* a neural net in front of you —
+no Python, no server, nothing but the page. (One-time repo setup: Settings → Pages → Source:
+GitHub Actions.)
+
 | Chase the target | Quadruped (locomotion) | Rover (3D) |
 |:---:|:---:|:---:|
 | ![Chase the target](media/Catch.jpeg) | ![Quadruped locomotion](media/Quadruped-Debug.jpeg) | ![Rover 3D](media/Rover.jpg) |
@@ -76,6 +82,12 @@ warm-start from a shipped net and fine-tune on-device. Drop it into a scene in p
 from scratch in ~25 min (mean fitness −0.9 → 13.5 over 400 generations), and the resulting net
 ships in `examples/chase_the_target/models/chase_es.ncnn.*` with a CI behavioral regression. ES is
 sample-inefficient — small nets and dense rewards, not a PPO/SAC replacement (issue #131).
+
+**Watch it happen: the Evolution Lab demo** (launcher → "Evolution Lab (train LIVE)", #291) —
+8 worlds train on screen while a highlighted **champion world** runs the best-so-far net through
+the ordinary inference path, hot-swapped on every improvement: population evolving on the left,
+today's best brain deployed on the right, zero export in between. HUD shows the live learning
+curve; keys 1/2/3 set speed. First visible competence in ~5–8 minutes.
 
 ## What you get
 - `NcnnRunner` C++ node: `load_model`, `run_inference`, `run_inference_image`,

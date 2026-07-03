@@ -26,6 +26,11 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
 
 - **Build the extension:** `scons platform=macos arch=arm64 target=template_debug` (see README for other platforms). Project minimum is **Godot 4.5**; developed/tested on both 4.5 and 4.6 (e.g. `/opt/homebrew/bin/godot-mono` is 4.5.1). Set `GODOT=` to pick the binary for `run_tests.sh`.
 - **Build the extension (web/WASM):** `source ~/emsdk/emsdk_env.sh && scripts/cross/build_web.sh` (single-threaded; needs emsdk 3.1.64). No COOP/COEP headers required at deploy — see `docs/dev/building.md`. Model `*.ncnn.param`/`*.ncnn.bin` are auto-packed into exports by the enabled addon's `EditorExportPlugin` (`addons/godot_native_rl/export/`); without the plugin, set an `include_filter` by hand. (Raw data files the Godot exporter skips otherwise — affects all platforms.)
+- **Publish the web demo (GitHub Pages):** `.github/workflows/deploy-web-demo.yml` — builds the
+  wasm extension, exports the examples project with the committed `Web` preset (headless Godot +
+  export templates), and deploys to Pages on pushes to `main` touching examples/addons/src (or
+  `workflow_dispatch`). Live at https://minigraphx.github.io/godot-native-rl/ (one-time: Settings
+  → Pages → Source: GitHub Actions). PRs touching the workflow run build+export only, no deploy.
 - **Cut a release:** bump `addons/godot_native_rl/plugin.cfg` `version=`, then `git tag vX.Y.Z &&
   git push origin vX.Y.Z` → `.github/workflows/release.yml` builds all platforms, **runtime/symbol-validates
   each binary** (shared `validate-binaries.yml`, also used by `cross-build.yml`; publish is gated on it),
@@ -170,7 +175,10 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   via `ParallelArena2D`) took mean fitness −0.9 → **13.5** in 400 generations (~25 min); the best
   net ships as `examples/chase_the_target/models/chase_es.ncnn.*` with a behavioral regression
   (`trained_es_chase_scene.tscn`, 19 catches/1800 frames through the standard inference
-  controller). Small nets + dense rewards only (ES is sample-inefficient).
+  controller). The launcher's **Evolution Lab** demo (`evolution_lab.tscn`, #291) shows it live:
+  8 worlds train on screen while a champion world hot-swaps onto every blessed checkpoint
+  (`checkpoint_saved` signal → `reload_model`); HUD learning curve, keys 1/2/3 = speed. Small
+  nets + dense rewards only (ES is sample-inefficient).
   **Gotcha found here:** ncnn's from-memory load ALIASES the source buffer (`DataReaderFromMemory`
   zero-copy) — the runner reads from a private owned copy that outlives the net; never assume a
   from-memory load copied the weights. (And never SUBCLASS ncnn classes in the extension — iOS
