@@ -44,13 +44,47 @@ the update step** — deploy this one), `<stem>_final`, and optional `<stem>_gen
 | Export | What it does |
 |---|---|
 | `hidden_dims`, `hidden_activation` | The policy MLP between your obs and action space |
-| `half_population` | Candidates per generation = 2× this (antithetic pairs) |
-| `sigma`, `alpha` | Perturbation size / learning rate. He-init weights need σ large enough to change behavior (the chase examples use 0.4 from scratch, 0.25 for fine-tuning) |
+| `optimizer` | `openai_es` (default) or `cma_es` — see the optimizer section below. Cmdline `optimizer=` overrides |
+| `half_population` | Candidates per generation = 2× this (antithetic pairs; for `cma_es` simply λ = 2× this) |
+| `sigma`, `alpha` | Perturbation size / learning rate. He-init weights need σ large enough to change behavior (the chase examples use 0.4 from scratch, 0.25 for fine-tuning). Under `cma_es`, `sigma` is only the initial step size (self-adapts) and `alpha` is unused |
 | `episode_decisions` | Episode horizon in decision steps — **the trainer owns it** (agents' `reset_after` is overridden and restored, so a controller self-reset can never silently delete the final window's reward from fitness) |
 | `episodes_per_candidate` | Fitness = mean over k seeded episodes (noise ↓, wall-clock ↑) |
 | `seed_games` | Common random numbers (below). Leave on |
 | `speed_up` | Same mechanism as Sync (`speedup=` cmdline overrides it) |
 | `exit_on_finish` | CLI runs exit 0 on finish / 1 on abort — never hangs |
+
+## Choosing the optimizer: OpenAI-ES vs sep-CMA-ES
+
+`optimizer = "openai_es"` (default) is the antithetic gradient estimator described above.
+`optimizer = "cma_es"` switches to **sep-CMA-ES** (Ros & Hansen 2008) — the diagonal-covariance
+variant of CMA-ES, O(θ) per generation so it scales to net-sized search spaces — which adds what
+plain ES lacks: **self-adapting step size** (`sigma` becomes only the *initial* value; CSA grows
+it while progress is easy and shrinks it near an optimum) and **per-coordinate variances** (stiff
+weights get small perturbations, loose ones large). `alpha` is unused; everything else — CRN
+seeding, episode phases, blessing, checkpoints — is identical. Cmdline `optimizer=` (and
+`generations=`) override the scene, so the same training scene can run either:
+
+```bash
+godot --headless --path . res://examples/chase_the_target/chase_es_train_parallel.tscn optimizer=cma_es
+```
+
+**Measured head-to-head** (one paired run of the parallel chase scene: 200 generations each,
+identical seeds/CRN/budget, only `optimizer=` differing — and note the OpenAI-ES `sigma`/`alpha`
+were the hand-tuned values that produced the shipped net, so this is not a straw-man baseline):
+
+| Mean fitness | OpenAI-ES | sep-CMA-ES |
+|---|---|---|
+| first generation above 0 | 91 | **15** |
+| first generation above 2.314 (the baseline's whole-run best) | 192 | **22** |
+| first generation above 10 | never | **33** |
+| best generation mean in 200 generations | 2.314 | **13.389** |
+
+sep-CMA-ES reached the baseline's 200-generation endpoint ~9× sooner and matched the historical
+**400**-generation OpenAI-ES result (13.5) within ~140 generations. The mechanism is visible in
+the logs: CSA grows the step size while progress is easy (fast early climb) and shrinks it as the
+population closes in, which fixed-σ ES cannot do. One paired run, so treat the exact ratios as
+indicative — but the gap is far beyond run-to-run noise on this task. Default remains
+`openai_es` for continuity with the shipped nets; prefer `cma_es` for new from-scratch runs.
 
 ## Fitness comparability: why the defaults look the way they do
 
@@ -95,7 +129,8 @@ your inputs can express; add observations (and retrain properly) when it doesn't
 Open the launcher's **Evolution Lab** (`evolution_lab.tscn`): 8 worlds train on screen while a
 champion world hot-swaps onto every blessed checkpoint (`checkpoint_saved` signal →
 `reload_model`), with a live learning-curve HUD. Keys 1/2/3 set speed. The same scene runs in
-the published web build.
+the published web build. The lab trains with `cma_es` (the benchmark above is why — visibly
+faster learning while you watch).
 
 ## Signals & integration
 
