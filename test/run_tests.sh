@@ -109,6 +109,9 @@ echo "== Curriculum promotion smoke (headless) =="
 echo "== Sorter env smoke (variable-count entity obs, #46 M2) =="
 "$GODOT" --headless --path . res://test/integration/sorter_smoke_scene.tscn
 
+echo "== Sorter parallel-arena group-scoping smoke (#313) =="
+"$GODOT" --headless --path . res://test/integration/sorter_parallel_smoke_scene.tscn
+
 echo "== Native in-engine ES trainer smoke (no Python, #131) =="
 "$GODOT" --headless --path . res://test/integration/es_trainer_smoke_scene.tscn
 
@@ -117,6 +120,9 @@ echo "== Trained ES chase behavioral check (net trained IN-ENGINE, #131) =="
 
 echo "== Warm-start fine-tuned net behavioral check (on-device adaptation pipeline, #131) =="
 "$GODOT" --headless --path . res://test/integration/trained_es_drift_scene.tscn
+
+echo "== Trained seek behavioral check (RelativePositionSensor2D example, in-engine CMA-ES net, #38) =="
+"$GODOT" --headless --path . res://test/integration/trained_seek_scene.tscn
 
 echo "== Evolution Lab demo smoke (live-training showcase wiring, #291) =="
 "$GODOT" --headless --path . res://test/integration/evolution_lab_smoke_scene.tscn
