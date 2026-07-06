@@ -12,6 +12,16 @@ signal stage_changed(index: int, name: String, params: Dictionary)
 @export var apply_method := "apply_curriculum"
 @export var stages_json_path := ""  ## optional JSON {"stages": [...]}; set_stages() takes precedence
 
+## Launch-time override for the stages source (#198): a `curriculum_stages=<res://…>` cmdline
+## token supersedes the exported `stages_json_path`, so the shipped scene can be pointed at a
+## different stages JSON without editing the .tscn. Returns "" when absent/malformed. Pure (args
+## injected) so it is headlessly unit-testable — mirrors RunSpeed's parse convention.
+static func parse_stages_arg(args: PackedStringArray) -> String:
+	for argument in args:
+		if argument.begins_with("curriculum_stages="):
+			return argument.substr("curriculum_stages=".length())
+	return ""
+
 var _curriculum = CurriculumScript.new()
 var _game: Node
 var _external := false
@@ -23,8 +33,10 @@ func _ready() -> void:
 		add_to_group("CURRICULUM")
 	if _game == null:
 		_game = get_node_or_null(game_path)
-	if not _stages_set and stages_json_path != "":
-		var loaded := _load_stages_json(stages_json_path)
+	var cmdline_override := parse_stages_arg(OS.get_cmdline_args())
+	var effective_stages_path := cmdline_override if cmdline_override != "" else stages_json_path
+	if not _stages_set and effective_stages_path != "":
+		var loaded := _load_stages_json(effective_stages_path)
 		if not loaded.is_empty():
 			set_stages(loaded)
 	if _stages_set and not _initial_applied:
