@@ -1,0 +1,7 @@
+{
+	"stages": [
+		{"name": "smoke_a", "params": {"touch_radius": 120.0, "arena_size_x": 500.0, "arena_size_y": 300.0},
+		 "promote": {"metric": "mean_reward", "threshold": -1000000000.0, "window": 3, "min_episodes": 3}},
+		{"name": "smoke_b", "params": {"touch_radius": 80.0, "arena_size_x": 500.0, "arena_size_y": 300.0}}
+	]
+}
