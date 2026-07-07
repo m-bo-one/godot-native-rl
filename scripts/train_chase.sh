@@ -15,6 +15,14 @@ ACTION_REPEAT="${ACTION_REPEAT:-8}"
 # (chase_the_target_train_curriculum.tscn). Every other train_*.sh already honors SCENE=.
 SCENE="${SCENE:-res://examples/chase_the_target/chase_the_target_train.tscn}"
 
+# Output overrides (#198) so a smoke run writes to a temp dir instead of models/ (mirrors
+# train_cleanrl.sh / train_sf.sh). Defaults preserve the historical behavior.
+SAVE_MODEL_PATH="${SAVE_MODEL_PATH:-models/chase_policy.zip}"
+ONNX_EXPORT_PATH="${ONNX_EXPORT_PATH:-models/chase_policy.onnx}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-models/chase_checkpoints}"
+# Extra user args appended to the Godot launch (e.g. curriculum_stages=res://…). Empty by default.
+GODOT_EXTRA_ARGS="${GODOT_EXTRA_ARGS:-}"
+
 # BEST_CHECKPOINT=1 saves a reward-gated best checkpoint (#138); the deploy-side
 # exporters prefer it over the final model. ($BEST_FLAG intentionally unquoted.)
 BEST_FLAG=""
@@ -23,14 +31,15 @@ if [ -n "${BEST_CHECKPOINT:-}" ]; then
 fi
 
 echo "Starting SB3 trainer (timesteps=$TIMESTEPS)..."
-"$PY" scripts/train_chase.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" $BEST_FLAG &
+"$PY" scripts/train_chase.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" \
+	--save_model_path "$SAVE_MODEL_PATH" --onnx_export_path "$ONNX_EXPORT_PATH" --checkpoint_dir "$CHECKPOINT_DIR" $BEST_FLAG &
 TRAINER_PID=$!
 
 # Give the trainer a moment to bind the server socket before Godot connects.
 sleep 5
 
 echo "Launching headless Godot training scene..."
-"$GODOT" --headless --path . "$SCENE" "speedup=$SPEEDUP" "action_repeat=$ACTION_REPEAT" &
+"$GODOT" --headless --path . "$SCENE" "speedup=$SPEEDUP" "action_repeat=$ACTION_REPEAT" $GODOT_EXTRA_ARGS &
 GODOT_PID=$!
 
 # Wait for the trainer to finish; then make sure Godot is gone.
