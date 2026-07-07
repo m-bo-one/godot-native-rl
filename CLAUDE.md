@@ -65,9 +65,16 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   promotions print + surface via the per-agent `info` field as `curriculum_stage`). Custom trainer
   loops can override with the additive `{"type":"curriculum","stage":N}` wire message
   (`scripts/curriculum_client.py` encoders). Library: `addons/godot_native_rl/training/curriculum.gd`
-  (pure logic) + `curriculum_controller.gd` (apply-at-episode-boundary node).
+  (pure logic) + `curriculum_controller.gd` (apply-at-episode-boundary node). `CurriculumController`
+  also honors a launch-time `curriculum_stages=res://…json` cmdline arg that supersedes the exported
+  `stages_json_path` (no .tscn edit) — used by the CI promotion smoke below (#198).
 - **Train (chase):** `TIMESTEPS=120000 ./scripts/train_chase.sh` (starts SB3 trainer, launches headless
-  Godot training scene which connects on port 11008). ~34 min at 120k steps.
+  Godot training scene which connects on port 11008). ~34 min at 120k steps. `SAVE_MODEL_PATH`/
+  `ONNX_EXPORT_PATH`/`CHECKPOINT_DIR` redirect the trainer's outputs (default `models/…`) and
+  `GODOT_EXTRA_ARGS` forwards extra Godot args (e.g. `curriculum_stages=…`); the `run_tests.sh`
+  curriculum trainer-driven promotion smoke (#198) uses these to run a real trainer against the
+  curriculum scene with a guaranteed-promote fixture and assert a promotion fires — catching
+  trainer↔scene regressions (like the #186 `SCENE=` bug) no unit/wire test covered.
 - **Train (rover, resumable):** `./scripts/train_rover.sh` — checkpoints to `models/rover_checkpoints/`
   every 25k steps and **auto-resumes** on re-run. `FRESH=1` restart; `CHECKPOINT_FREQ=N` tune;
   `TIMESTEPS=N` raise the target to **refine** an existing model further; `BEST_CHECKPOINT=1`
