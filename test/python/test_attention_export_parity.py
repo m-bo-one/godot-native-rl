@@ -19,7 +19,7 @@ except Exception:
 
 if _HAS_TORCH and _HAS_NCNN:
     from attention_encoder import AttentionEncoder
-    from spike_attention_ncnn import encoder_weights_dict, export_encoder_policy  # noqa: F401
+    from attention_export import encoder_weights_dict, export_encoder_policy  # noqa: F401
 
 
 @unittest.skipUnless(_HAS_TORCH and _HAS_NCNN, "torch/ncnn not available")

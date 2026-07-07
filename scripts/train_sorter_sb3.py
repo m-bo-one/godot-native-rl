@@ -3,7 +3,7 @@
 
 Mirrors scripts/train_chase.py (SB3 PPO over StableBaselinesGodotEnv). The policy uses
 AttentionFeaturesExtractor + net_arch=[] so the deploy actor is encoder -> a single linear head;
-export reuses the M2 direct exporter (spike_attention_ncnn.export_encoder_policy). No VecNormalize,
+export reuses the M2 direct exporter (attention_export.export_encoder_policy). No VecNormalize,
 so the deployed encoder sees the same raw obs distribution it trained on.
 
 Run this FIRST (opens the server on port 11008 and waits), THEN launch the Godot training scene.
@@ -20,9 +20,9 @@ def export_sb3_sorter_policy(model, outdir: str, stem: str = "sorter_attention_s
     """Export an SB3 attention policy (net_arch=[]) to ncnn via the M2 direct exporter.
 
     Pulls the shared AttentionEncoder (the features extractor) + the single-linear action head and
-    hands them to spike_attention_ncnn.export_encoder_policy. Returns (param, bin) paths.
+    hands them to attention_export.export_encoder_policy. Returns (param, bin) paths.
     """
-    from spike_attention_ncnn import export_encoder_policy
+    from attention_export import export_encoder_policy
 
     policy = model.policy
     enc = policy.features_extractor.encoder

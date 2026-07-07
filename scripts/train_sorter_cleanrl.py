@@ -6,7 +6,7 @@ The Sorter env emits a variable-length entity observation (EntitySensor2D block:
 (scripts/attention_encoder.py), which reshapes the flat obs internally, so the CleanRL loop keeps
 passing flat obs unchanged. On completion the policy is exported to native ncnn via the DIRECT
 hand-written exporter (scripts/export_statedict_to_ncnn.py::attention_policy_layers, through
-spike_attention_ncnn.export_encoder_policy) — NOT ONNX/pnnx (pnnx decomposes the hand-built
+attention_export.export_encoder_policy) — NOT ONNX/pnnx (pnnx decomposes the hand-built
 attention; the direct path is byte-pinned to the #307 ncnn-verified fixtures).
 
 Design: docs/superpowers/specs/2026-07-07-attention-encoder-m2-torch-side-design.md
@@ -108,6 +108,11 @@ def build_sorter_agent(obs_dim: int, n_act: int, embed_dim: int = 16, num_heads:
             self.actor = layer_init(nn.Linear(embed_dim, n_act), std=0.01)
             self.critic = layer_init(nn.Linear(embed_dim, 1), std=1.0)
 
+        def features(self, obs):
+            # The masked MHA encoder is the dominant compute; compute it ONCE and feed both heads
+            # (the hot loops below use features() so the trunk isn't re-run for logits and value).
+            return self.encoder(obs)
+
         def logits(self, obs):
             return self.actor(self.encoder(obs))
 
@@ -119,7 +124,7 @@ def build_sorter_agent(obs_dim: int, n_act: int, embed_dim: int = 16, num_heads:
 
 def export_sorter_policy(agent, outdir: str, stem: str):
     """Export the trained encoder + actor head to native ncnn via the direct exporter."""
-    from spike_attention_ncnn import export_encoder_policy
+    from attention_export import export_encoder_policy
 
     return export_encoder_policy(agent.encoder, agent.actor.weight, agent.actor.bias, outdir, stem)
 
@@ -176,8 +181,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             obs_buf[step] = next_obs
             dones_buf[step] = next_done
             with torch.no_grad():
-                logits = agent.logits(next_obs)
-                value = agent.value(next_obs)
+                feat = agent.features(next_obs)
+                logits = agent.actor(feat)
+                value = agent.critic(feat).squeeze(-1)
             dists = _split_categoricals(logits, nvec)
             sampled = [d.sample() for d in dists]
             action = torch.stack(sampled, dim=1)
@@ -213,12 +219,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             np.random.shuffle(b_inds)
             for start in range(0, batch_size, minibatch_size):
                 mb_inds = b_inds[start:start + minibatch_size]
-                logits = agent.logits(b_obs[mb_inds])
+                feat = agent.features(b_obs[mb_inds])
+                logits = agent.actor(feat)
                 dists = _split_categoricals(logits, nvec)
                 mb_actions = b_actions[mb_inds]
                 new_logprob = sum(d.log_prob(mb_actions[:, i]) for i, d in enumerate(dists))
                 entropy = sum(d.entropy() for d in dists)
-                new_value = agent.value(b_obs[mb_inds])
+                new_value = agent.critic(feat).squeeze(-1)
 
                 logratio = new_logprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
