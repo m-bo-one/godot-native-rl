@@ -28,7 +28,7 @@ SCENE="${SCENE:-res://examples/rover_3d/rover_3d_train.tscn}"
 
 echo "Starting SB3 trainer (timesteps=$TIMESTEPS)..."
 # $FRESH_FLAG/$BEST_FLAG are intentionally unquoted: empty when unset, the flag when set.
-"$PY" scripts/train_rover.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" --checkpoint_freq "$CHECKPOINT_FREQ" $FRESH_FLAG $BEST_FLAG &
+"$PY" scripts/train_rover.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" --checkpoint_freq "$CHECKPOINT_FREQ" --format "${FORMAT:-onnx}" $FRESH_FLAG $BEST_FLAG &
 TRAINER_PID=$!
 
 # Give the trainer a moment to bind the server socket before Godot connects.

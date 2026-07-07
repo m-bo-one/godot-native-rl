@@ -75,6 +75,12 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   curriculum trainer-driven promotion smoke (#198) uses these to run a real trainer against the
   curriculum scene with a guaranteed-promote fixture and assert a promotion fires — catching
   trainer↔scene regressions (like the #186 `SCENE=` bug) no unit/wire test covered.
+  **`FORMAT=torchscript` (or `both`) emits an ONNX-free `.pt` + `.pt.shape.json` instead of/alongside
+  ONNX** (#52): `--format {onnx,torchscript,both}` (default `onnx`, hot path unchanged) on
+  `train_chase.py`/`train_rover.py`/`train_hide_seek.py`/`export_checkpoint.py` via the shared
+  `scripts/export_formats.py` dispatch (torchscript path reuses `export_torchscript.export_policy_as_torchscript`);
+  the `.pt` flows into `export_to_ncnn.py` with no `--inputshape` (the sidecar auto-derives it). The
+  three orchestrators forward it as `FORMAT=`.
 - **Train (rover, resumable):** `./scripts/train_rover.sh` — checkpoints to `models/rover_checkpoints/`
   every 25k steps and **auto-resumes** on re-run. `FRESH=1` restart; `CHECKPOINT_FREQ=N` tune;
   `TIMESTEPS=N` raise the target to **refine** an existing model further; `BEST_CHECKPOINT=1`

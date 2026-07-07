@@ -21,13 +21,14 @@ from checkpoints import select_checkpoint  # noqa: E402
 
 def main() -> None:
     from stable_baselines3 import PPO
-    from godot_rl.wrappers.onnx.stable_baselines_export import export_model_as_onnx
+    from export_formats import export_policy, add_format_arg
 
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--checkpoint", type=str, default="",
                         help="path to a checkpoint .zip; defaults to the latest in --checkpoint_dir")
     parser.add_argument("--checkpoint_dir", type=str, default="models/rover_checkpoints")
     parser.add_argument("--onnx_export_path", type=str, default="models/rover_policy.onnx")
+    add_format_arg(parser)
     args = parser.parse_args()
 
     ckpt = args.checkpoint or select_checkpoint(args.checkpoint_dir, policy="deploy")
@@ -38,10 +39,8 @@ def main() -> None:
     model = PPO.load(ckpt)
     print("Loaded checkpoint:", ckpt, "(num_timesteps=%d)" % model.num_timesteps)
 
-    onnx_path = pathlib.Path(args.onnx_export_path).with_suffix(".onnx")
-    onnx_path.parent.mkdir(parents=True, exist_ok=True)
-    export_model_as_onnx(model, str(onnx_path))
-    print("Exported ONNX to:", onnx_path)
+    for p in export_policy(model, args.onnx_export_path, args.format):
+        print("Exported deploy model:", p)
 
 
 if __name__ == "__main__":

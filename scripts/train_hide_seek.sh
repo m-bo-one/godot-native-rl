@@ -16,7 +16,7 @@ ACTION_REPEAT="${ACTION_REPEAT:-8}"
 SCENE="${SCENE:-res://examples/hide_and_seek/hide_and_seek_train.tscn}"
 
 echo "Starting SB3 self-play trainer (timesteps=$TIMESTEPS)..."
-"$PY" scripts/train_hide_seek.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" &
+"$PY" scripts/train_hide_seek.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" --format "${FORMAT:-onnx}" &
 TRAINER_PID=$!
 
 # Give the trainer a moment to bind the server socket before Godot connects.
