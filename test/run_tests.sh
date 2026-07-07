@@ -176,7 +176,7 @@ PY_TRAIN="${PY_TRAIN:-.venv-train/bin/python}"
 # Backstop cleanup: with `set -e`, a crash in export_int8.py / train_sf.sh aborts before the
 # inline `rm -rf` runs, so these temp dirs would leak. The EXIT trap reaps whichever are set.
 INT8_TMP="" SF_TMP=""
-trap 'rm -rf "${INT8_TMP:-}" "${SF_TMP:-}" "${RLLIB_TMP:-}" "${CLEANRL_TMP:-}" "${CLEANRL_ICM_TMP:-}" "${CLEANRL_GAIL_TMP:-}" "${MAPOCA_TMP:-}" 2>/dev/null || true' EXIT
+trap 'rm -rf "${INT8_TMP:-}" "${SF_TMP:-}" "${RLLIB_TMP:-}" "${CLEANRL_TMP:-}" "${CLEANRL_ICM_TMP:-}" "${CLEANRL_GAIL_TMP:-}" "${MAPOCA_TMP:-}" "${CURRIC_TMP:-}" 2>/dev/null || true' EXIT
 INT8_TMP="$(mktemp -d)"
 "$PY_TRAIN" scripts/export_int8.py models/synthetic_cnn.ncnn.param models/synthetic_cnn.ncnn.bin \
 	--width 8 --height 8 --channels 3 --samples 256 --n-verify 100 --outdir "$INT8_TMP"
@@ -283,6 +283,27 @@ if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import godot_rl" 
 	echo "MA-POCA smoke OK."
 else
 	echo "SKIP: godot_rl not installed in .venv-train (run scripts/setup_training.sh to enable the MA-POCA smoke)."
+fi
+
+echo "== Curriculum trainer-driven promotion smoke (skipped if godot_rl absent in .venv-train) =="
+# Runs a real SB3 trainer against the curriculum scene with a guaranteed-promote stages fixture
+# (#198): asserts a "Curriculum: promoted to stage" line, catching trainer<->scene regressions
+# (e.g. the #186 SCENE= bug) that the unit/wire/simulated-episode tests all missed. Outputs go to
+# a temp dir (SAVE_MODEL_PATH/ONNX_EXPORT_PATH/CHECKPOINT_DIR) so models/ is never touched.
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import godot_rl" >/dev/null 2>&1; then
+	CURRIC_TMP="$(mktemp -d)"
+	SCENE=res://examples/chase_the_target/chase_the_target_train_curriculum.tscn \
+	TIMESTEPS="${CURRICULUM_SMOKE_TIMESTEPS:-3000}" \
+	SAVE_MODEL_PATH="$CURRIC_TMP/m.zip" ONNX_EXPORT_PATH="$CURRIC_TMP/m.onnx" CHECKPOINT_DIR="$CURRIC_TMP/ckpt" \
+	GODOT_EXTRA_ARGS="curriculum_stages=res://test/integration/chase_curriculum_smoke.json" \
+		./scripts/train_chase.sh > "$CURRIC_TMP/train.log" 2>&1 \
+		|| { echo "FAIL: curriculum smoke trainer errored" >&2; tail -40 "$CURRIC_TMP/train.log" >&2; rm -rf "$CURRIC_TMP"; exit 1; }
+	grep -q "Curriculum: promoted to stage" "$CURRIC_TMP/train.log" \
+		|| { echo "FAIL: no curriculum promotion in trainer-driven run" >&2; tail -40 "$CURRIC_TMP/train.log" >&2; rm -rf "$CURRIC_TMP"; exit 1; }
+	rm -rf "$CURRIC_TMP"
+	echo "Curriculum trainer-driven promotion smoke OK."
+else
+	echo "SKIP: godot_rl not installed in .venv-train (run scripts/setup_training.sh to enable the curriculum promotion smoke)."
 fi
 
 echo "All tests passed."
