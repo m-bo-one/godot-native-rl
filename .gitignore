@@ -72,3 +72,6 @@ models/hide_seek_*.pt.shape.json
 models/coop_mapoca.zip
 models/coop_mapoca.pt
 models/coop_mapoca.pt.shape.json
+
+# Large regenerable BC demos (#260) — regenerate via examples/sorter/record_sorter_demos.tscn
+examples/sorter/demos/*.json

@@ -1,0 +1,37 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://examples/sorter/sorter_game.gd" id="1"]
+[ext_resource type="Script" path="res://examples/sorter/sorter_agent.gd" id="2"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sensors/entity_sensor_2d.gd" id="3"]
+[ext_resource type="Script" path="res://test/integration/sorter_trained_checker.gd" id="4"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="5"]
+
+[node name="SorterTrained" type="Node2D"]
+
+[node name="SorterWorld" type="Node2D" parent="."]
+script = ExtResource("1")
+agent_body_path = NodePath("SorterAgent")
+
+[node name="SorterAgent" type="Node2D" parent="SorterWorld"]
+script = ExtResource("2")
+game_path = NodePath("..")
+control_mode = 3
+model_param_path = "res://examples/sorter/models/sorter_attention.ncnn.param"
+model_bin_path = "res://examples/sorter/models/sorter_attention.ncnn.bin"
+
+[node name="EntitySensor2D" type="Node2D" parent="SorterWorld/SorterAgent"]
+script = ExtResource("3")
+max_entities = 6
+group_name = &"SORTER_TILES"
+scope_root = NodePath("../..")
+max_distance = 1200.0
+extra_feature_count = 2
+
+[node name="Sync" type="Node" parent="SorterWorld"]
+script = ExtResource("5")
+control_mode = 2
+
+[node name="Checker" type="Node" parent="."]
+script = ExtResource("4")
+game_path = NodePath("../SorterWorld")
+agent_path = NodePath("../SorterWorld/SorterAgent")
