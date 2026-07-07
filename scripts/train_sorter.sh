@@ -14,6 +14,7 @@ export PYTHONUNBUFFERED=1
 GODOT="${GODOT:-godot}"
 PY="${PY:-.venv-train/bin/python}"
 TIMESTEPS="${TIMESTEPS:-1000000}"
+NUM_STEPS="${NUM_STEPS:-256}"   # rollout length; lower it for a fast smoke so a small TIMESTEPS still yields >=1 update
 SPEEDUP="${SPEEDUP:-8}"
 ACTION_REPEAT="${ACTION_REPEAT:-8}"
 SCENE="${SCENE:-res://examples/sorter/sorter_train_parallel.tscn}"
@@ -24,7 +25,7 @@ STEM="${STEM:-sorter_attention}"
 
 echo "Starting CleanRL Sorter trainer (timesteps=$TIMESTEPS)..."
 "$PY" scripts/train_sorter_cleanrl.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" \
-	--action_repeat "$ACTION_REPEAT" --save_model_path "$SAVE_MODEL_PATH" \
+	--action_repeat "$ACTION_REPEAT" --num_steps "$NUM_STEPS" --save_model_path "$SAVE_MODEL_PATH" \
 	--outdir "$OUTDIR" --stem "$STEM" &
 TRAINER_PID=$!
 

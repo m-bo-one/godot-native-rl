@@ -176,7 +176,7 @@ PY_TRAIN="${PY_TRAIN:-.venv-train/bin/python}"
 # Backstop cleanup: with `set -e`, a crash in export_int8.py / train_sf.sh aborts before the
 # inline `rm -rf` runs, so these temp dirs would leak. The EXIT trap reaps whichever are set.
 INT8_TMP="" SF_TMP=""
-trap 'rm -rf "${INT8_TMP:-}" "${SF_TMP:-}" "${RLLIB_TMP:-}" "${CLEANRL_TMP:-}" "${CLEANRL_ICM_TMP:-}" "${CLEANRL_GAIL_TMP:-}" "${MAPOCA_TMP:-}" "${CURRIC_TMP:-}" 2>/dev/null || true' EXIT
+trap 'rm -rf "${INT8_TMP:-}" "${SF_TMP:-}" "${RLLIB_TMP:-}" "${CLEANRL_TMP:-}" "${CLEANRL_ICM_TMP:-}" "${CLEANRL_GAIL_TMP:-}" "${MAPOCA_TMP:-}" "${CURRIC_TMP:-}" "${SORTER_TMP:-}" 2>/dev/null || true' EXIT
 INT8_TMP="$(mktemp -d)"
 "$PY_TRAIN" scripts/export_int8.py models/synthetic_cnn.ncnn.param models/synthetic_cnn.ncnn.bin \
 	--width 8 --height 8 --channels 3 --samples 256 --n-verify 100 --outdir "$INT8_TMP"
@@ -283,6 +283,24 @@ if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import godot_rl" 
 	echo "MA-POCA smoke OK."
 else
 	echo "SKIP: godot_rl not installed in .venv-train (run scripts/setup_training.sh to enable the MA-POCA smoke)."
+fi
+
+echo "== Sorter attention-encoder trainer smoke (skipped if godot_rl absent in .venv-train) =="
+# Exercises the #46/#258 M2 path end-to-end on a tiny Sorter run: variable-length entity obs ->
+# AttentionEncoder trunk -> PPO update -> DIRECT ncnn export (attention_policy_layers, not ONNX).
+# Outputs go to a temp dir so models/ is never touched. NUM_STEPS is lowered so a small TIMESTEPS
+# still yields >=1 update under the 8-world parallel scene (num_envs=8).
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import godot_rl" >/dev/null 2>&1; then
+	SORTER_TMP="$(mktemp -d)"
+	NUM_STEPS="${SORTER_SMOKE_NUM_STEPS:-64}" TIMESTEPS="${SORTER_SMOKE_TIMESTEPS:-1024}" \
+	SAVE_MODEL_PATH="$SORTER_TMP/sorter_attention.pt" OUTDIR="$SORTER_TMP" STEM="sorter_attention" \
+		./scripts/train_sorter.sh
+	test -f "$SORTER_TMP/sorter_attention.ncnn.param" || { echo "FAIL: Sorter ncnn .param not produced" >&2; rm -rf "$SORTER_TMP"; exit 1; }
+	test -f "$SORTER_TMP/sorter_attention.ncnn.bin"   || { echo "FAIL: Sorter ncnn .bin not produced" >&2; rm -rf "$SORTER_TMP"; exit 1; }
+	rm -rf "$SORTER_TMP"
+	echo "Sorter attention-encoder trainer smoke OK."
+else
+	echo "SKIP: godot_rl not installed in .venv-train (run scripts/setup_training.sh to enable the Sorter smoke)."
 fi
 
 echo "== Curriculum trainer-driven promotion smoke (skipped if godot_rl absent in .venv-train) =="
