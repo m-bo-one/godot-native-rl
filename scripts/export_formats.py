@@ -12,7 +12,6 @@ exporters only for the formats requested.
 from __future__ import annotations
 
 import pathlib
-from typing import Sequence
 
 SUPPORTED = ("onnx", "torchscript", "both")
 
@@ -57,8 +56,3 @@ def add_format_arg(parser) -> None:
     parser.add_argument("--format", choices=SUPPORTED, default="onnx",
                         help="deploy export format: onnx (default), torchscript (.pt + shape "
                              "sidecar, ONNX-free), or both")
-
-
-def _print_written(written: Sequence[pathlib.Path]) -> None:
-    for p in written:
-        print("Exported deploy model:", p)
