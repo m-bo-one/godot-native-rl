@@ -543,12 +543,16 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     breaks on MultiInputPolicy under torch 2.x dynamo): `export_torchscript.py` gained an image-space
     branch (CHW [0,1]-float contract), `verify_torchscript_parity.py` multi-dim conv inputshapes.
     Trained net committed + golden-inference + behavioral catch regression.
-38. ⬜ **CameraSensor real-render + grayscale deploy** — (a) an in-editor (non-`--headless`) check
-    that `viewport.get_texture().get_image()` produces the expected obs, since headless can't render
-    viewports; (b) grayscale (1-channel) image **deploy**: `run_inference_image` currently forces
-    `FORMAT_RGB8`/`PIXEL_RGB`, so deploying a grayscale-trained policy needs a C++ `PIXEL_GRAY` path;
-    (c) optional `render_size`/downscale override if an env needs display-size ≠ obs-size.
-    *(deferred from items 8 + 36)*
+38. ✅ **CameraSensor real-render + grayscale deploy** (#36) — (a) an in-editor (non-`--headless`)
+    check that `viewport.get_texture().get_image()` produces the expected obs, since headless can't
+    render viewports (`test/integration/camera_render_check.tscn` — run under `xvfb-run`, asserts a
+    real SubViewport render round-trips through `CameraSensor.get_image()`/`get_observation()`; not
+    wired into headless CI by design); (b) grayscale (1-channel) image **deploy**: `run_inference_image`
+    gained a `grayscale` param (C++ `PIXEL_GRAY`/`FORMAT_L8` + 1-channel normalize), and
+    `NcnnControllerCore` auto-detects it from an `L8` frame so a grayscale-trained policy deploys with
+    no new flag — golden-parity gated by `test/unit/test_image_inference_gray_golden.gd` (1-channel
+    synthetic CNN, `make_synthetic_cnn.py --grayscale`). (c) `render_size`/downscale override left as a
+    follow-up note. *(deferred from items 8 + 36)*
 
 ## Training throughput
 

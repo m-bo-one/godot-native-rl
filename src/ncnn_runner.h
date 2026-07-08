@@ -42,7 +42,7 @@ public:
     bool load_model(const String &p_param_path, const String &p_bin_path);
     bool load_model_from_buffers(const PackedByteArray &p_param, const PackedByteArray &p_bin);
     PackedFloat32Array run_inference(const PackedFloat32Array &p_input);
-    PackedFloat32Array run_inference_image(const Ref<Image> &p_image, bool p_normalize_to_zero_one = true);
+    PackedFloat32Array run_inference_image(const Ref<Image> &p_image, bool p_normalize_to_zero_one = true, bool p_grayscale = false);
     Dictionary run_inference_multi(const Array &p_inputs, const PackedStringArray &p_output_names);
     Array run_inference_batch(const Array &p_inputs, int p_num_threads = -1);
     int run_discrete_action(const PackedFloat32Array &p_input);
