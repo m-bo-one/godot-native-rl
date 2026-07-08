@@ -276,6 +276,15 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   exports the RLModule actor → TorchScript → `export_to_ncnn.py`. Ecosystem interop (#110), not a
   replacement for the custom trainers. `TIMESTEPS`/`SPEEDUP`/`ACTION_REPEAT`/`BASE_PORT`/
   `EXPERIMENT`/`TRAIN_DIR`/`OUTDIR`/`SCENE` overrides.
+- **Train (chase, NumPy twin — NO Godot, NO socket):** `./scripts/train_chase_twin.sh` (#37) — SB3 PPO
+  over `scripts/chase_twin_env.py`, a pure-NumPy Gymnasium **twin** of the chase env that reproduces
+  the Godot dynamics EXACTLY (obs byte-identical to `ChaseObs`; `action_repeat=8` sub-frames at Δt=1/60
+  → 40 px/step = `touch_radius`; unit-tested vs the GDScript formulas). Trains over many in-process
+  copies (`SubprocVecEnv`) with no engine/socket in the loop, then exports the actor → TorchScript →
+  ncnn; because the dynamics match, the net drops straight into the chase deploy scenes. The
+  **sim-to-deploy gap** is validated in the real engine by `trained_chase_twin_scene.tscn` (standard
+  chase behavioral checker, catches ≥ 5). NumPy not JAX — the win is deleting the socket+engine (a JAX
+  batch backend is a noted extension). `TIMESTEPS`/`N_ENVS`/`OUT`/`OUTDIR` overrides.
 - **Tune hyperparameters (Optuna):** `./scripts/tune_optuna.sh` — an Optuna PPO HP search over an
   example via the godot-rl bridge (#113, godot_rl parity). Each trial samples a PPO HP set, runs a
   short training trial, and reports `ep_rew_mean` (maximized); prints + writes the best set to

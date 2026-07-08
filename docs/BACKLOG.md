@@ -576,11 +576,17 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     Throughput validated parallel-vs-single (see commit/PR for numbers). Full suite green from a clean cache.
     **Follow-ups:** item 31 (JAX/NumPy Gymnasium twin); optionally retrofit the arena into the chase
     example; document the measured speedup in `README`/`ncnn_vs_onnx.md`.
-31. ⬜ **JAX/NumPy + Gymnasium env "twin" (train without Godot)** — reimplement a simple example's
-    dynamics (kinematics + analytic raycast-vs-AABB + reward) as a vectorized pure-Python/JAX Gymnasium
-    env to train at 100–1000× the speed, then deploy the policy back in Godot via ncnn. Only viable for
-    simple envs and reintroduces a sim-to-deploy gap to validate (run the trained policy in the Godot
-    smoke scene). *Later.* *(brainstormed alongside item 30)*
+31. ✅ **NumPy + Gymnasium env "twin" (train without Godot)** (#37) — `scripts/chase_twin_env.py`
+    reimplements the chase dynamics (kinematics + 5-dim obs + progress/catch reward) as a pure-NumPy
+    Gymnasium env that reproduces the Godot side **exactly** (obs byte-identical to `ChaseObs`,
+    `action_repeat=8` sub-frames at Δt=1/60 → 40 px/step = `touch_radius`; unit-tested against the
+    GDScript formulas). `scripts/train_chase_twin.{py,sh}` train SB3 PPO over many in-process copies
+    (`SubprocVecEnv`) with **no Godot and no socket**, then export the actor → ncnn; the trained net
+    drops straight into the chase deploy scenes. The **sim-to-deploy gap** is validated in the real
+    engine by `test/integration/trained_chase_twin_scene.tscn` (the standard chase behavioral checker,
+    catches ≥ 5). NumPy not JAX: the win is deleting the socket+engine (chase's step is a few float
+    ops), so SB3 vectorization already runs far faster with zero new heavy deps; a JAX batch backend is
+    a noted future extension. *(brainstormed alongside item 30)*
 32. ✅ **Example using `RelativePositionSensor`** — a small 2D seek/navigate-to-target demo (or
     migrate the rover's inline goal obs onto `RelativePositionSensor3D` with a retrain), to show
     the sensor end-to-end and provide a trained regression. *(follow-up from item 7)*
