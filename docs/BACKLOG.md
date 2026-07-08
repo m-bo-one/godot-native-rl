@@ -426,9 +426,14 @@ the same change. New items → GitHub issue only.
 
 ## Distribution & DX
 
-50. ⬜ **Hugging Face Hub integration** — push trained ncnn models to / pull pretrained ones from the
-    Hub in one command (e.g. `godot-ncnn push examples/chase_the_target/models/ my-org/chase-agent`).
-    Python-side CLI wrapping `huggingface_hub`. *(from item 20; roadmap Track D)*
+50. ✅ **Hugging Face Hub integration** (#31) — `scripts/hf_hub.py push <dir|stem> <repo_id>` /
+    `pull <repo_id> <dest>` shares/fetches trained ncnn deploy models (the `.ncnn.param`/`.ncnn.bin`
+    pair + stem-coupled `*.recurrent.json`/`*_action_dist.json` sidecars) with an auto-generated model
+    card, wrapping `huggingface_hub`. Isolated opt-in dep (`requirements-hub.txt`); `huggingface_hub`
+    imported lazily so the pure helpers (file collection, card builder, arg parsing) + the push/pull
+    orchestration (via an injected client) are unit-tested with no dep/network
+    (`test/python/test_hf_hub.py`). Live push/pull is manual (needs a token+network), like the
+    xvfb-only paths. *(from item 20; roadmap Track D)*
 
 ## Deploy-side inference gaps (surfaced by `docs/ncnn_vs_onnx.md`)
 

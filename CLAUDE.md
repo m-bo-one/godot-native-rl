@@ -330,6 +330,14 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   `.venv-train/bin/python scripts/export_int8.py models/m.ncnn.param models/m.ncnn.bin
   --width W --height H --channels C --outdir models` (optimize → KL-calibrate → ncnn2int8 →
   argmax-parity). Produces `m_int8.ncnn.{param,bin}`; deploy via `NcnnRunner` like fp32.
+- **Share/fetch models on Hugging Face Hub (#31):** `.venv-train/bin/python scripts/hf_hub.py push
+  <dir|stem> <repo_id>` uploads a model dir (all models) or one stem/param path (that model + its
+  `*.recurrent.json`/`*_action_dist.json` sidecars) with an auto-generated model card;
+  `pull <repo_id> <dest>` fetches them back. Token: `--token` → `HF_TOKEN` → cached login. Isolated
+  opt-in dep — install once: `.venv-train/bin/pip install -r requirements-hub.txt` (`huggingface_hub`
+  is imported lazily, so the pure helpers stay import-free). Pure helpers + injected-client
+  push/pull orchestration unit-tested (`test/python/test_hf_hub.py`); live push/pull is manual
+  (needs a token + network).
 - **Record + replay episodes (#39):** drop a `ReplayRecorder` node
   (`addons/godot_native_rl/training/replay_recorder.gd`) into any training scene — it taps
   `NcnnSync`'s additive `actions_received`/`step_sent` signals (zero agent changes) and writes one

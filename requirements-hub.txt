@@ -1,0 +1,6 @@
+# Optional Hugging Face Hub add-on (issue #31) for scripts/hf_hub.py — push/pull trained ncnn
+# deploy models to the Hub. Isolated from requirements-train.txt so the core train/verify stack stays
+# lean and the Hub CLI is opt-in: `.venv-train/bin/pip install -r requirements-hub.txt`.
+# huggingface_hub is pure-Python and has no version conflict with the SB3 2.8 / gymnasium 1.2 /
+# numpy>=2 stack. hf_hub.py imports it lazily, so its pure helpers/tests run without this installed.
+huggingface_hub>=0.24
