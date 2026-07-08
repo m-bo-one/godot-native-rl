@@ -612,9 +612,13 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     Obs deliberately not stored (actions+rewards reproduce the episode; demo format keeps obs where
     needed). Follow-ups filed: inference-time recording, multi-agent capture. Item 35 (#40) builds
     on this.
-35. ⬜ **Record to video** — render a Godot replay to a video file using Godot 4's `MovieWriter`
-    API. Pairs with item 34: train in Python, pick a replay, export a clip. Useful for sharing
-    results and debugging policy behaviour visually.
+35. ✅ **Record to video** (#40) — render a Godot replay to a video file using Godot 4's `MovieWriter`
+    (`--write-movie`). `scripts/record_replay_video.sh` records a chase episode from the deployed net
+    (`record_chase_replay.tscn`) then plays it in `chase_video.tscn` under `xvfb-run godot
+    --write-movie`, which quits when the replay ends (`ReplayPlayer.quit_on_finish`) so the clip is
+    bounded; `ReplayPlayer` gained a cmdline `replay_path=` (unit-tested `parse_replay_path_arg`) so
+    one scene renders any episode. Pairs with item 34: train in Python, pick a replay, export a clip.
+    Rendering needs a display (headless can't), so it is not wired into headless CI.
 
 ## Retired / split
 

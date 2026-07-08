@@ -69,4 +69,12 @@ func _initialize() -> void:
 	p2.set_nodes_for_test(agent, game)
 	h.assert_true(not p2.play(), "missing file refused")
 
+	# Record-to-video (#40): the cmdline `replay_path=` parser feeds the video scene.
+	h.assert_eq(Player.parse_replay_path_arg(PackedStringArray(["replay_path=res://a.json"])),
+		"res://a.json", "parses replay_path= from cmdline args")
+	h.assert_eq(Player.parse_replay_path_arg(PackedStringArray(["foo=1", "replay_path=user://b.json", "bar"])),
+		"user://b.json", "finds replay_path= among other args")
+	h.assert_eq(Player.parse_replay_path_arg(PackedStringArray(["nothing", "here"])),
+		"", "returns empty when no replay_path= arg")
+
 	h.finish(self)

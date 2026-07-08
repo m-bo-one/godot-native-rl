@@ -15,6 +15,9 @@ signal replay_finished(recorded_total_reward: float)
 @export var game_path: NodePath
 @export var autoplay := true
 @export var loop := false
+# Record-to-video (#40): quit the app when the replay ends, so `godot --write-movie out.avi`
+# produces a bounded clip. Ignored when loop is true (a looping replay never ends).
+@export var quit_on_finish := false
 
 var _agent: Node
 var _game: Node
@@ -29,8 +32,21 @@ func _ready() -> void:
 		_agent = get_node_or_null(agent_path)
 	if _game == null:
 		_game = get_node_or_null(game_path)
+	# A `replay_path=...` command-line arg overrides the exported path, so one video scene can
+	# render ANY recorded episode without editing the .tscn (see scripts/record_replay_video.sh).
+	var arg_path := parse_replay_path_arg(OS.get_cmdline_user_args())
+	if not arg_path.is_empty():
+		replay_path = arg_path
 	if autoplay:
 		play()
+
+# Pure helper: pull a `replay_path=<value>` token out of the user cmdline args (the part after
+# `--`). Returns "" if absent. Kept static + arg-injectable so it is unit-testable without a tree.
+static func parse_replay_path_arg(args: PackedStringArray) -> String:
+	for a in args:
+		if a.begins_with("replay_path="):
+			return a.substr("replay_path=".length())
+	return ""
 
 func set_nodes_for_test(agent: Node, game: Node) -> void:
 	_agent = agent
@@ -79,6 +95,9 @@ func step_frame() -> void:
 			replay_finished.emit(float(_episode["meta"].get("total_reward", 0.0)))
 			if loop:
 				play()
+			elif quit_on_finish and is_inside_tree():
+				# Give the last action a frame to render into the movie, then finalize + quit.
+				get_tree().create_timer(0.1).timeout.connect(get_tree().quit)
 			return
 		_agent.set_action(_episode["steps"][_step]["action"])
 		_step += 1

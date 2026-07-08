@@ -346,6 +346,14 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   their accumulator; the pre-reset tail + the new episode's first window fold into the baseline
   and are not capturable; #194). Call
   `flush_inference_episodes()` before quitting a recording session.
+- **Record replay → video (#40):** `scripts/record_replay_video.sh [OUT.avi] [FRAMES]` renders a
+  replay to a clip via Godot's `MovieWriter` (`--write-movie`): it records one chase episode from the
+  deployed net (`record_chase_replay.tscn`), then plays it in `chase_video.tscn` under
+  `xvfb-run godot --write-movie` — the scene quits when the replay ends
+  (`ReplayPlayer.quit_on_finish=true`), so the clip is bounded. `ReplayPlayer` also honors a cmdline
+  `replay_path=` (pure `parse_replay_path_arg`, unit-tested) so one video scene renders any episode.
+  Rendering needs a display (headless can't), hence xvfb; codec follows the OUT extension
+  (`.avi`=MJPEG, `.png`=frame sequence). Not in headless CI by design.
 - **Record expert demos:** `godot --headless --path . res://examples/chase_the_target/record_chase_demos.tscn -- --demo-out=PATH --demo-trajectories=N`
   (offline — no trainer/socket; `gnrl_v1` default format; set `demo_format="godot_rl"` on the `NcnnSync` node for stock-tooling interop).
 - **Behavior cloning:** `.venv-train/bin/python scripts/train_bc.py --demos PATH --out models/bc.pt`
