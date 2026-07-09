@@ -20,7 +20,8 @@ The throughput win here is **removing the socket + engine**, not GPU kernels: ch
 handful of float ops, so a plain NumPy env under SB3's `SubprocVecEnv`/`DummyVecEnv` already runs
 orders of magnitude more steps/sec than the bridge, with **zero new heavy deps** (numpy is in
 `.venv-train`). A JAX `vmap`/`jit` backend would help only at very large batch on GPU and adds a big
-dependency — deferred as a noted extension. The issue title is "JAX/NumPy"; NumPy is the lean choice.
+dependency — deferred as a noted extension, **tracked as #361**. The issue title is "JAX/NumPy";
+NumPy is the lean choice.
 
 ## Exact dynamics to replicate (transfer-critical)
 

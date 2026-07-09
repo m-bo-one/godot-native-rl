@@ -42,6 +42,7 @@ pixel determinism across renderers is not worth a flaky gate; the value is the o
 ### (c) render_size override — deferred
 
 Out of scope for this pass (optional in the issue); the grayscale deploy path is the concrete gap.
+**Tracked as #362** so the deferred slice is not lost when #36 closes.
 
 ## Testing
 
@@ -61,4 +62,4 @@ Out of scope for this pass (optional in the issue); the grayscale deploy path is
 | `test/unit/test_image_inference_gray_golden.gd` | **new** golden test |
 | `CLAUDE.md` | note grayscale deploy |
 
-Closes #36 (b) + (a); (c) render_size left as a follow-up note.
+Closes #36 (b) + (a); (c) render_size tracked as #362.

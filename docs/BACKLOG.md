@@ -556,8 +556,8 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     gained a `grayscale` param (C++ `PIXEL_GRAY`/`FORMAT_L8` + 1-channel normalize), and
     `NcnnControllerCore` auto-detects it from an `L8` frame so a grayscale-trained policy deploys with
     no new flag — golden-parity gated by `test/unit/test_image_inference_gray_golden.gd` (1-channel
-    synthetic CNN, `make_synthetic_cnn.py --grayscale`). (c) `render_size`/downscale override left as a
-    follow-up note. *(deferred from items 8 + 36)*
+    synthetic CNN, `make_synthetic_cnn.py --grayscale`). (c) `render_size`/downscale override is
+    **tracked as #362** (deferred slice, not dropped). *(deferred from items 8 + 36)*
 
 ## Training throughput
 
@@ -586,7 +586,7 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     engine by `test/integration/trained_chase_twin_scene.tscn` (the standard chase behavioral checker,
     catches ≥ 5). NumPy not JAX: the win is deleting the socket+engine (chase's step is a few float
     ops), so SB3 vectorization already runs far faster with zero new heavy deps; a JAX batch backend is
-    a noted future extension. *(brainstormed alongside item 30)*
+    a noted future extension, **tracked as #361**. *(brainstormed alongside item 30)*
 32. ✅ **Example using `RelativePositionSensor`** — a small 2D seek/navigate-to-target demo (or
     migrate the rover's inline goal obs onto `RelativePositionSensor3D` with a retrain), to show
     the sensor end-to-end and provide a trained regression. *(follow-up from item 7)*

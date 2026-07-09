@@ -284,7 +284,7 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   ncnn; because the dynamics match, the net drops straight into the chase deploy scenes. The
   **sim-to-deploy gap** is validated in the real engine by `trained_chase_twin_scene.tscn` (standard
   chase behavioral checker, catches ≥ 5). NumPy not JAX — the win is deleting the socket+engine (a JAX
-  batch backend is a noted extension). `TIMESTEPS`/`N_ENVS`/`OUT`/`OUTDIR` overrides.
+  batch backend is a noted extension, #361). `TIMESTEPS`/`N_ENVS`/`OUT`/`OUTDIR` overrides.
 - **Tune hyperparameters (Optuna):** `./scripts/tune_optuna.sh` — an Optuna PPO HP search over an
   example via the godot-rl bridge (#113, godot_rl parity). Each trial samples a PPO HP set, runs a
   short training trial, and reports `ep_rew_mean` (maximized); prints + writes the best set to
