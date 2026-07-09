@@ -68,13 +68,22 @@ func get_observation() -> String:
 		return ""
 	return CameraObsMath.encode_image_bytes(bytes)
 
-# Raw captured frame for native deploy inference (NcnnRunner.run_inference_image handles
-# the RGB8 conversion + /255 itself, so no hex/format coercion here). Returns null when
-# there is nothing to capture.
+# Captured frame for native deploy inference (NcnnControllerCore -> run_inference_image). Coerced to
+# the SAME channel format get_observation() uses, so the deploy capture path matches the training obs
+# path: a grayscale sensor hands back FORMAT_L8 (which NcnnControllerCore auto-detects as 1-channel,
+# #36), not the raw RGBA8 viewport texture — otherwise a grayscale-trained policy would be fed 3
+# channels at deploy. Returns null when there is nothing to capture.
 func get_image() -> Image:
 	if viewport == null and _capture_fn == null:
 		return null
-	return _capture()
+	var img: Image = _capture()
+	if img == null:
+		return null
+	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8
+	if img.get_format() != target_format:
+		img = img.duplicate()
+		img.convert(target_format)
+	return img
 
 func _capture() -> Image:
 	if _capture_fn != null:

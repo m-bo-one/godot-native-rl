@@ -20,9 +20,12 @@ a real render.
   param. When true: convert to `FORMAT_L8`, `ncnn::Mat::from_pixels(..., PIXEL_GRAY, ...)`, and
   1-channel `substract_mean_normalize`. Default `false` = the unchanged 3-channel RGB path.
 - **Controller auto-detects** (deepest fix — no new flag to plumb): `NcnnControllerCore` passes
-  `grayscale = (img.get_format() == Image.FORMAT_L8)`. A grayscale CameraSensor produces `L8`, so a
-  1-channel policy just works; RGB frames stay the default. Also fixes the debug overlay's channel
-  count (`c=1` for gray).
+  `grayscale = (img.get_format() == Image.FORMAT_L8)`. For this to hold at deploy, `CameraSensor.get_image()`
+  (the deploy capture path) coerces to the SAME channel format `get_observation()` uses — `FORMAT_L8`
+  when `grayscale`, else `FORMAT_RGB8` — instead of returning the raw RGBA8 viewport texture; otherwise
+  the auto-detect would see RGBA8 and mis-route a grayscale-trained policy to the 3-channel path (found
+  in code review; pinned by `test_camera_sensor.gd`). So a grayscale CameraSensor just works; RGB frames
+  stay the default. Also fixes the debug overlay's channel count (`c=1` for gray).
 - **Fixture + golden:** `make_synthetic_cnn.py --grayscale` (parametrized — RGB default unchanged)
   writes `models/synthetic_cnn_gray.ncnn.*` + `_golden.json` (1-channel Conv, fixed 8×8 L8 image).
   `test/unit/test_image_inference_gray_golden.gd` loads it, runs

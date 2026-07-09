@@ -63,8 +63,25 @@ func _initialize() -> void:
 	h.assert_true(got != null, "get_image returns the injected image")
 	h.assert_eq(got.get_width(), 2, "get_image width")
 	h.assert_eq(got.get_height(), 2, "get_image height")
+	h.assert_eq(got.get_format(), Image.FORMAT_RGB8, "RGB get_image -> FORMAT_RGB8")
 	s4.free()
 	vp4.free()
+
+	# --- get_image() grayscale deploy path (#36): a grayscale sensor must hand back FORMAT_L8, so
+	# NcnnControllerCore auto-detects 1-channel inference. A raw viewport texture is RGBA8, which the
+	# controller would mis-route to the 3-channel path — get_image() must coerce like get_observation().
+	var s6 = CameraSensor.new()
+	var vp6 := SubViewport.new()
+	vp6.size = Vector2i(2, 2)
+	s6.viewport = vp6
+	s6.grayscale = true
+	# Inject an RGBA8 frame (what viewport.get_texture().get_image() actually returns at deploy).
+	s6.set_image_for_test(_make_image(2, 2, Image.FORMAT_RGBA8, Color(1, 1, 1)))
+	var gray_img: Image = s6.get_image()
+	h.assert_true(gray_img != null, "grayscale get_image returns an image")
+	h.assert_eq(gray_img.get_format(), Image.FORMAT_L8, "grayscale get_image -> FORMAT_L8 (deploy auto-detect)")
+	s6.free()
+	vp6.free()
 
 	# Missing viewport and no capture fn -> null (no crash).
 	var s5 = CameraSensor.new()

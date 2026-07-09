@@ -33,11 +33,13 @@ Token resolution: `--token` → `HF_TOKEN` env → the cached `huggingface_hub` 
 ### Pure helpers (unit-tested, no `huggingface_hub`)
 
 - `collect_model_files(path) -> list[Path]` — given a dir or a stem, return the deploy files to
-  upload. A **param+bin pair is required** (raises `FileNotFoundError` otherwise). Includes known
-  sidecars when present: `*.recurrent.json`, `*_action_dist.json`, `*_vecnorm*.json` /
-  `*_vecnormalize*.json`, `*.ncnn.param`/`*.ncnn.bin`, and any `*_golden.json` is **excluded** (test
-  fixture, not a deploy artifact). Stem mode selects only files sharing that stem; dir mode takes all
-  matching files in the dir.
+  upload. A **param+bin pair is required** (raises `FileNotFoundError` otherwise). Includes the
+  stem-coupled sidecars when present: `*.ncnn.param`/`*.ncnn.bin`, `*.recurrent.json`,
+  `*_action_dist.json` (`DEPLOY_SUFFIXES`). **NOT collected:** `*_golden.json` (a test fixture) and
+  the **VecNormalize obs-norm stats JSON** — that file is not stem-coupled (loaded via an explicit
+  `obs_norm_stats_path`, named `<pkl-stem>.json`), so auto-collecting it reliably is a follow-up,
+  **tracked as #363**. Stem mode selects only files sharing that stem; dir mode takes all matching
+  files in the dir.
 - `stem_of(path)` — the model stem (strips `.ncnn.param`/`.ncnn.bin`/known suffixes).
 - `build_model_card(repo_id, files, *, base_model=None) -> str` — a Markdown model card with YAML
   front-matter (`library_name: godot-native-rl`, `tags: [godot, ncnn, reinforcement-learning,
