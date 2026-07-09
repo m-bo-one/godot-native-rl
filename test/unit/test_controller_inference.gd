@@ -21,10 +21,12 @@ class FakeImageRunner:
 	var loaded := true
 	var logits := PackedFloat32Array([0.1, 0.9, 0.2, 0.0])  # argmax == 1 over size-4
 	var last_normalize := false
+	var last_grayscale := false
 	func is_model_loaded() -> bool:
 		return loaded
-	func run_inference_image(_img, normalize) -> PackedFloat32Array:
+	func run_inference_image(_img, normalize, grayscale := false) -> PackedFloat32Array:
 		last_normalize = normalize
+		last_grayscale = grayscale
 		return logits
 
 func _initialize() -> void:
@@ -48,7 +50,18 @@ func _initialize() -> void:
 	ia.infer_and_act()
 	h.assert_eq(ia.last_action, {"move": 1}, "image path sets {move: argmax(logits)}")
 	h.assert_true(fir.last_normalize, "image path requests /255 normalization")
+	h.assert_true(not fir.last_grayscale, "RGB8 frame deploys as 3-channel (grayscale=false)")
 	ia.free()
+
+	# Grayscale auto-detection (#36): an FORMAT_L8 frame (grayscale CameraSensor) must set grayscale=true.
+	var gimg := Image.create(2, 2, false, Image.FORMAT_L8)
+	var gia = ImageStub.new()
+	gia.image_to_return = gimg
+	var gfir := FakeImageRunner.new()
+	gia.set_ncnn_runner_for_test(gfir)
+	gia.infer_and_act()
+	h.assert_true(gfir.last_grayscale, "L8 frame auto-detected as grayscale (grayscale=true)")
+	gia.free()
 
 	# Mixed action space (discrete "fire" size 2 + continuous "steer" size 2, squashed).
 	var ca = ContinuousStub.new()

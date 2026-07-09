@@ -1,0 +1,38 @@
+[gd_scene load_steps=5 format=3]
+
+; Sim-to-deploy regression for the NumPy chase twin (#37): the policy was trained entirely in
+; Python on scripts/chase_twin_env.py (no Godot, no socket), exported to ncnn, and must still catch
+; targets in the REAL Godot chase engine — proving the twin reproduced the Godot dynamics. Reuses
+; the standard trained-chase behavioral checker.
+
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_game.gd" id="1"]
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_agent.gd" id="2"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="3"]
+[ext_resource type="Script" path="res://test/integration/trained_chase_checker.gd" id="4"]
+
+[node name="ChaseGame" type="Node2D"]
+script = ExtResource("1")
+agent_body_path = NodePath("AgentBody")
+target_path = NodePath("Target")
+
+[node name="AgentBody" type="Node2D" parent="."]
+
+[node name="Target" type="Node2D" parent="."]
+
+[node name="ChaseAgent" type="Node2D" parent="."]
+script = ExtResource("2")
+game_path = NodePath("..")
+control_mode = 3
+model_param_path = "res://examples/chase_the_target/models/chase_twin.ncnn.param"
+model_bin_path = "res://examples/chase_the_target/models/chase_twin.ncnn.bin"
+
+[node name="Sync" type="Node" parent="."]
+script = ExtResource("3")
+control_mode = 2
+
+[node name="TrainedChecker" type="Node" parent="."]
+script = ExtResource("4")
+game_path = NodePath("..")
+agent_path = NodePath("../ChaseAgent")
+frames_to_run = 1800
+min_catches = 5

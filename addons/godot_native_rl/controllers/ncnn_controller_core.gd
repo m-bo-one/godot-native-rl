@@ -101,9 +101,11 @@ func choose_and_apply_action(agent, runner) -> void:
 		if not recurrent_contract.is_empty() and not _warned_image_recurrent:
 			push_warning("NcnnControllerCore: a recurrent contract is set but get_inference_image() returned a frame — recurrent hidden state is NOT used on the image path (float-obs only).")
 			_warned_image_recurrent = true
-		output = runner.run_inference_image(img, true)
-		# c=0: channel count is not derived from the Image format yet (debug-display only).
-		debug_img = {"w": img.get_width(), "h": img.get_height(), "c": 0}
+		# Auto-detect grayscale (#36): a grayscale CameraSensor captures FORMAT_L8, so a 1-channel
+		# policy deploys correctly without any extra flag — RGB frames stay the 3-channel default.
+		var is_gray: bool = img.get_format() == Image.FORMAT_L8
+		output = runner.run_inference_image(img, true, is_gray)
+		debug_img = {"w": img.get_width(), "h": img.get_height(), "c": 1 if is_gray else 3}
 	else:
 		var obs_dict: Dictionary = agent.get_obs()
 		assert("obs" in obs_dict, "get_obs() must return a dictionary with an 'obs' key")

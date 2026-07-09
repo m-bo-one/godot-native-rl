@@ -32,7 +32,7 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_model", "param_path", "bin_path"), &NcnnRunner::load_model);
     ClassDB::bind_method(D_METHOD("load_model_from_buffers", "param", "bin"), &NcnnRunner::load_model_from_buffers);
     ClassDB::bind_method(D_METHOD("run_inference", "input"), &NcnnRunner::run_inference);
-    ClassDB::bind_method(D_METHOD("run_inference_image", "image", "normalize_to_zero_one"), &NcnnRunner::run_inference_image, DEFVAL(true));
+    ClassDB::bind_method(D_METHOD("run_inference_image", "image", "normalize_to_zero_one", "grayscale"), &NcnnRunner::run_inference_image, DEFVAL(true), DEFVAL(false));
     ClassDB::bind_method(D_METHOD("run_inference_multi", "inputs", "output_names"), &NcnnRunner::run_inference_multi);
     ClassDB::bind_method(D_METHOD("run_inference_batch", "inputs", "num_threads"), &NcnnRunner::run_inference_batch, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("run_discrete_action", "input"), &NcnnRunner::run_discrete_action);
@@ -155,7 +155,7 @@ PackedFloat32Array NcnnRunner::run_inference(const PackedFloat32Array &p_input) 
     return output_mat_to_packed_float_array(output_mat);
 }
 
-PackedFloat32Array NcnnRunner::run_inference_image(const Ref<Image> &p_image, bool p_normalize_to_zero_one) {
+PackedFloat32Array NcnnRunner::run_inference_image(const Ref<Image> &p_image, bool p_normalize_to_zero_one, bool p_grayscale) {
     if (p_image.is_null()) {
         UtilityFunctions::push_error("NcnnRunner.run_inference_image: image is null.");
         return PackedFloat32Array();
@@ -166,10 +166,13 @@ PackedFloat32Array NcnnRunner::run_inference_image(const Ref<Image> &p_image, bo
         return PackedFloat32Array();
     }
 
+    // Grayscale (1-channel) deploy (#36): a CameraSensor with grayscale=true captures FORMAT_L8,
+    // so a policy trained on 1-channel obs needs a PIXEL_GRAY input, not the default 3-channel RGB.
+    const Image::Format target_format = p_grayscale ? Image::FORMAT_L8 : Image::FORMAT_RGB8;
     Ref<Image> working_image = p_image;
-    if (working_image->get_format() != Image::FORMAT_RGB8) {
+    if (working_image->get_format() != target_format) {
         working_image = working_image->duplicate();
-        working_image->convert(Image::FORMAT_RGB8);
+        working_image->convert(target_format);
     }
 
     const PackedByteArray image_data = working_image->get_data();
@@ -180,14 +183,19 @@ PackedFloat32Array NcnnRunner::run_inference_image(const Ref<Image> &p_image, bo
 
     ncnn::Mat input_mat = ncnn::Mat::from_pixels(
         image_data.ptr(),
-        ncnn::Mat::PIXEL_RGB,
+        p_grayscale ? ncnn::Mat::PIXEL_GRAY : ncnn::Mat::PIXEL_RGB,
         working_image->get_width(),
         working_image->get_height()
     );
 
     if (p_normalize_to_zero_one) {
-        const float normalize_values[3] = {1.0f / 255.0f, 1.0f / 255.0f, 1.0f / 255.0f};
-        input_mat.substract_mean_normalize(nullptr, normalize_values);
+        if (p_grayscale) {
+            const float normalize_values[1] = {1.0f / 255.0f};
+            input_mat.substract_mean_normalize(nullptr, normalize_values);
+        } else {
+            const float normalize_values[3] = {1.0f / 255.0f, 1.0f / 255.0f, 1.0f / 255.0f};
+            input_mat.substract_mean_normalize(nullptr, normalize_values);
+        }
     }
 
     ncnn::Mat output_mat;

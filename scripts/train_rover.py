@@ -24,7 +24,7 @@ def main() -> None:
     from stable_baselines3.common.callbacks import CheckpointCallback
     from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
     from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
-    from godot_rl.wrappers.onnx.stable_baselines_export import export_model_as_onnx
+    from export_formats import export_policy, add_format_arg
 
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--timesteps", type=int, default=400_000)
@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--best_checkpoint", action="store_true",
                         help="also save rover_ckpt_best.zip whenever the rolling mean episode "
                              "reward improves (#138); the deploy-side exporters prefer it")
+    add_format_arg(parser)
     args = parser.parse_args()
 
     # env_path=None => in-editor training: opens the server and waits for a Godot client.
@@ -96,9 +97,8 @@ def main() -> None:
     model.save(zip_path)
     print("Saved SB3 model to:", zip_path)
 
-    onnx_path = pathlib.Path(args.onnx_export_path).with_suffix(".onnx")
-    export_model_as_onnx(model, str(onnx_path))
-    print("Exported ONNX to:", onnx_path)
+    for p in export_policy(model, args.onnx_export_path, args.format):
+        print("Exported deploy model:", p)
 
     env.close()
 

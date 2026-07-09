@@ -426,9 +426,14 @@ the same change. New items → GitHub issue only.
 
 ## Distribution & DX
 
-50. ⬜ **Hugging Face Hub integration** — push trained ncnn models to / pull pretrained ones from the
-    Hub in one command (e.g. `godot-ncnn push examples/chase_the_target/models/ my-org/chase-agent`).
-    Python-side CLI wrapping `huggingface_hub`. *(from item 20; roadmap Track D)*
+50. ✅ **Hugging Face Hub integration** (#31) — `scripts/hf_hub.py push <dir|stem> <repo_id>` /
+    `pull <repo_id> <dest>` shares/fetches trained ncnn deploy models (the `.ncnn.param`/`.ncnn.bin`
+    pair + stem-coupled `*.recurrent.json`/`*_action_dist.json` sidecars) with an auto-generated model
+    card, wrapping `huggingface_hub`. Isolated opt-in dep (`requirements-hub.txt`); `huggingface_hub`
+    imported lazily so the pure helpers (file collection, card builder, arg parsing) + the push/pull
+    orchestration (via an injected client) are unit-tested with no dep/network
+    (`test/python/test_hf_hub.py`). Live push/pull is manual (needs a token+network), like the
+    xvfb-only paths. *(from item 20; roadmap Track D)*
 
 ## Deploy-side inference gaps (surfaced by `docs/ncnn_vs_onnx.md`)
 
@@ -543,12 +548,16 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     breaks on MultiInputPolicy under torch 2.x dynamo): `export_torchscript.py` gained an image-space
     branch (CHW [0,1]-float contract), `verify_torchscript_parity.py` multi-dim conv inputshapes.
     Trained net committed + golden-inference + behavioral catch regression.
-38. ⬜ **CameraSensor real-render + grayscale deploy** — (a) an in-editor (non-`--headless`) check
-    that `viewport.get_texture().get_image()` produces the expected obs, since headless can't render
-    viewports; (b) grayscale (1-channel) image **deploy**: `run_inference_image` currently forces
-    `FORMAT_RGB8`/`PIXEL_RGB`, so deploying a grayscale-trained policy needs a C++ `PIXEL_GRAY` path;
-    (c) optional `render_size`/downscale override if an env needs display-size ≠ obs-size.
-    *(deferred from items 8 + 36)*
+38. ✅ **CameraSensor real-render + grayscale deploy** (#36) — (a) an in-editor (non-`--headless`)
+    check that `viewport.get_texture().get_image()` produces the expected obs, since headless can't
+    render viewports (`test/integration/camera_render_check.tscn` — run under `xvfb-run`, asserts a
+    real SubViewport render round-trips through `CameraSensor.get_image()`/`get_observation()`; not
+    wired into headless CI by design); (b) grayscale (1-channel) image **deploy**: `run_inference_image`
+    gained a `grayscale` param (C++ `PIXEL_GRAY`/`FORMAT_L8` + 1-channel normalize), and
+    `NcnnControllerCore` auto-detects it from an `L8` frame so a grayscale-trained policy deploys with
+    no new flag — golden-parity gated by `test/unit/test_image_inference_gray_golden.gd` (1-channel
+    synthetic CNN, `make_synthetic_cnn.py --grayscale`). (c) `render_size`/downscale override is
+    **tracked as #362** (deferred slice, not dropped). *(deferred from items 8 + 36)*
 
 ## Training throughput
 
@@ -567,11 +576,17 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     Throughput validated parallel-vs-single (see commit/PR for numbers). Full suite green from a clean cache.
     **Follow-ups:** item 31 (JAX/NumPy Gymnasium twin); optionally retrofit the arena into the chase
     example; document the measured speedup in `README`/`ncnn_vs_onnx.md`.
-31. ⬜ **JAX/NumPy + Gymnasium env "twin" (train without Godot)** — reimplement a simple example's
-    dynamics (kinematics + analytic raycast-vs-AABB + reward) as a vectorized pure-Python/JAX Gymnasium
-    env to train at 100–1000× the speed, then deploy the policy back in Godot via ncnn. Only viable for
-    simple envs and reintroduces a sim-to-deploy gap to validate (run the trained policy in the Godot
-    smoke scene). *Later.* *(brainstormed alongside item 30)*
+31. ✅ **NumPy + Gymnasium env "twin" (train without Godot)** (#37) — `scripts/chase_twin_env.py`
+    reimplements the chase dynamics (kinematics + 5-dim obs + progress/catch reward) as a pure-NumPy
+    Gymnasium env that reproduces the Godot side **exactly** (obs byte-identical to `ChaseObs`,
+    `action_repeat=8` sub-frames at Δt=1/60 → 40 px/step = `touch_radius`; unit-tested against the
+    GDScript formulas). `scripts/train_chase_twin.{py,sh}` train SB3 PPO over many in-process copies
+    (`SubprocVecEnv`) with **no Godot and no socket**, then export the actor → ncnn; the trained net
+    drops straight into the chase deploy scenes. The **sim-to-deploy gap** is validated in the real
+    engine by `test/integration/trained_chase_twin_scene.tscn` (the standard chase behavioral checker,
+    catches ≥ 5). NumPy not JAX: the win is deleting the socket+engine (chase's step is a few float
+    ops), so SB3 vectorization already runs far faster with zero new heavy deps; a JAX batch backend is
+    a noted future extension, **tracked as #361**. *(brainstormed alongside item 30)*
 32. ✅ **Example using `RelativePositionSensor`** — a small 2D seek/navigate-to-target demo (or
     migrate the rover's inline goal obs onto `RelativePositionSensor3D` with a retrain), to show
     the sensor end-to-end and provide a trained regression. *(follow-up from item 7)*
@@ -608,9 +623,13 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     Obs deliberately not stored (actions+rewards reproduce the episode; demo format keeps obs where
     needed). Follow-ups filed: inference-time recording, multi-agent capture. Item 35 (#40) builds
     on this.
-35. ⬜ **Record to video** — render a Godot replay to a video file using Godot 4's `MovieWriter`
-    API. Pairs with item 34: train in Python, pick a replay, export a clip. Useful for sharing
-    results and debugging policy behaviour visually.
+35. ✅ **Record to video** (#40) — render a Godot replay to a video file using Godot 4's `MovieWriter`
+    (`--write-movie`). `scripts/record_replay_video.sh` records a chase episode from the deployed net
+    (`record_chase_replay.tscn`) then plays it in `chase_video.tscn` under `xvfb-run godot
+    --write-movie`, which quits when the replay ends (`ReplayPlayer.quit_on_finish`) so the clip is
+    bounded; `ReplayPlayer` gained a cmdline `replay_path=` (unit-tested `parse_replay_path_arg`) so
+    one scene renders any episode. Pairs with item 34: train in Python, pick a replay, export a clip.
+    Rendering needs a display (headless can't), so it is not wired into headless CI.
 
 ## Retired / split
 

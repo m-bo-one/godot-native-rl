@@ -12,12 +12,12 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
-from godot_rl.wrappers.onnx.stable_baselines_export import export_model_as_onnx
 
 # Reward-gated best-checkpoint helper + deploy-export decision (import-light: no torch at module load).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from reward_checkpoint import make_reward_gated_checkpoint  # noqa: E402
 from checkpoints import deploy_export_checkpoint  # noqa: E402
+from export_formats import export_policy, add_format_arg  # noqa: E402
 
 
 def main() -> None:
@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--onnx_export_path", type=str, default="models/chase_policy.onnx")
     parser.add_argument("--checkpoint_dir", type=str, default="models/chase_checkpoints",
                         help="where --best_checkpoint writes chase_ckpt_best.zip + manifest")
+    add_format_arg(parser)
     parser.add_argument("--best_checkpoint", action="store_true",
                         help="save chase_ckpt_best.zip whenever the rolling mean episode "
                              "reward improves (#138); the deploy-side exporters prefer it")
@@ -71,14 +72,13 @@ def main() -> None:
 
     # Ship the reward-gated best checkpoint when --best_checkpoint blessed one (#146), else the
     # just-trained model. The deploy promise ("exporters prefer the best") now holds inline too.
-    onnx_path = pathlib.Path(args.onnx_export_path).with_suffix(".onnx")
     export_model = model
     best = deploy_export_checkpoint(args.checkpoint_dir, str(zip_path), use_best=args.best_checkpoint)
     if best:
         print("[best_checkpoint] exporting blessed best instead of final model:", best)
         export_model = PPO.load(best)
-    export_model_as_onnx(export_model, str(onnx_path))
-    print("Exported ONNX to:", onnx_path)
+    for p in export_policy(export_model, args.onnx_export_path, args.format):
+        print("Exported deploy model:", p)
 
     env.close()
 

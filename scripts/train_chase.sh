@@ -32,7 +32,7 @@ fi
 
 echo "Starting SB3 trainer (timesteps=$TIMESTEPS)..."
 "$PY" scripts/train_chase.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" \
-	--save_model_path "$SAVE_MODEL_PATH" --onnx_export_path "$ONNX_EXPORT_PATH" --checkpoint_dir "$CHECKPOINT_DIR" $BEST_FLAG &
+	--save_model_path "$SAVE_MODEL_PATH" --onnx_export_path "$ONNX_EXPORT_PATH" --checkpoint_dir "$CHECKPOINT_DIR" --format "${FORMAT:-onnx}" $BEST_FLAG &
 TRAINER_PID=$!
 
 # Give the trainer a moment to bind the server socket before Godot connects.

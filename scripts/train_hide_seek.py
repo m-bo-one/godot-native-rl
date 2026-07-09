@@ -7,12 +7,15 @@ training scene. See scripts/train_hide_seek.sh for orchestration.
 """
 import argparse
 import pathlib
+import sys
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
-from godot_rl.wrappers.onnx.stable_baselines_export import export_model_as_onnx
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from export_formats import export_policy, add_format_arg  # noqa: E402
 
 
 def main() -> None:
@@ -23,6 +26,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--save_model_path", type=str, default="models/hide_seek_policy.zip")
     parser.add_argument("--onnx_export_path", type=str, default="models/hide_seek_policy.onnx")
+    add_format_arg(parser)
     args = parser.parse_args()
 
     # env_path=None => in-editor training: opens the server and waits for a Godot client.
@@ -52,9 +56,8 @@ def main() -> None:
     model.save(zip_path)
     print("Saved SB3 model to:", zip_path)
 
-    onnx_path = pathlib.Path(args.onnx_export_path).with_suffix(".onnx")
-    export_model_as_onnx(model, str(onnx_path))
-    print("Exported ONNX to:", onnx_path)
+    for p in export_policy(model, args.onnx_export_path, args.format):
+        print("Exported deploy model:", p)
 
     env.close()
 
