@@ -45,6 +45,7 @@ models/quadruped_walk_ckpts/
 # Intermediate SB3 training-checkpoint dirs (deploy nets live in examples/.../models/ instead)
 models/quadruped_hurdles_ckpts/
 models/quadruped_walk_base_ckpts/
+models/quadruped_jump_ckpts/
 # Trained SB3/ONNX artifacts (the deployable ncnn model goes to examples/rover_3d/models/ instead)
 models/rover_policy.*
 
