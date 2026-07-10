@@ -200,6 +200,21 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   SCENE=res://examples/quadruped_walk/quadruped_hurdles_train_parallel.tscn ./scripts/train_quadruped.sh`
   — same trainer, hurdles world (35-dim obs incl. 6 hurdle rays), 3-stage curriculum promotes
   game-side; `OUT=` redirects the save/export stem, `CKPT_DIR=` the snapshot dir.
+  **Solid-hurdle JUMP (#286):** `OUT=models/quadruped_jump
+  SCENE=res://examples/quadruped_walk/quadruped_jump_train_parallel.tscn
+  INIT_FROM=models/quadruped_hurdles.zip ENT_COEF=0.01 ./scripts/train_quadruped.sh` — the #60 M2
+  hurdles were **perception-only** (StaticBody layer 2, `mask=0` — the creature trotted THROUGH
+  them); #286 makes them **physically solid** (`HurdleTrack.solid=true` → collision layer 3: bit 1
+  the creature collides + bit 2 the sensor still reads) so the quadruped must actually **leap** them.
+  Adds jump-launch reward shaping (`jump_weight`, pure `JumpMath.approach_jump_reward` rewards upward
+  torso velocity while a hurdle is close ahead — both **gated off by default so the shipped
+  perception net is byte-identical**) + a low→tall solid curriculum promoting on `success_rate`.
+  Warm-started from the hurdles runner (same 35-dim obs), the net learned a real (wild lunging)
+  leap: it clears a **solid 0.30 m wall** (torso-height — the first hurdle) and chains **two solid
+  0.20 m walls** (~17 m), deployed in `quadruped_jump_track.tscn`, behavioral regression at 0.20 m
+  (`quadruped_jump_trained_scene.tscn`, reliably 2 clears / 17 m). It does NOT yet clear the FULL
+  solid course or 0.5 m — reliable multi-hurdle 0.3–0.5 m leaping stays open on #286. Deploy pins
+  `action_repeat=4`. Screenshot capture: `quadruped_jump_capture.tscn` under `xvfb`.
 - **Train IN-ENGINE (ES — no Python, no socket, no backprop):** `godot --headless --path .
   res://examples/chase_the_target/chase_es_train.tscn` — the native ES trainer (#131): `ESTrainer`
   node (drop-in for `NcnnSync`; same agent contract, `action_repeat`/`speed_up`) evolves a flat θ

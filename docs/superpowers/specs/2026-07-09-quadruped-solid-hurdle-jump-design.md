@@ -78,3 +78,26 @@ jump shaping/curriculum (correct, tested), a real training run warm-started from
 guaranteed 0.5 m leap. If it plateaus, the env + finding are still the #286 outcome.
 
 Closes #286 (or reports the achieved milestone + keeps a follow-up if the tall-hurdle target isn't met).
+
+## Result (2026-07-09, 1.5M steps, warm-started from the hurdles runner)
+
+The curriculum raced flat→tiny→low→med→tall by ~278k steps (all 8 worlds), confirming it clears
+**solid** hurdles up through med (0.22 m). The trained net learned a real — if **wild, lunging** —
+leap:
+
+| Solid hurdle height | Best reach | Hurdles cleared (of 4) |
+|---|---|---|
+| 0.20 m | 17.0 m | **2** (reliable, identical across 3 runs) |
+| 0.25 m | 15.3 m | 1 |
+| 0.30 m | 8.5 m | **1** (a genuine leap over a torso-height solid wall) |
+
+Screenshots (rendered under xvfb) show the arc: crouch at the wall → explosive launch → airborne
+apex (~1.5 m) clearing the 0.30 m solid barrier. So the milestone — **solid hurdles + a genuine
+jumping gait** (vs the old pass-through) — is met at the low end of the 0.3–0.5 m range for 1–2
+hurdles. It does **not** yet clear the full solid course or 0.5 m, and the gait is an ungainly dive
+that lands hard (hence the drop-off after 1–2). Committed: the net (`quadruped_jump.ncnn.*`), the
+0.30 m deploy demo, and a robust 0.20 m behavioral regression (2 clears / 17 m).
+
+**Kept open on #286:** reliable multi-hurdle 0.3–0.5 m leaping with a cleaner landing gait (needs
+more training / reward work on landing stability + a stricter clear gate). This pass ships the env +
+shaping + a real first-milestone net.
