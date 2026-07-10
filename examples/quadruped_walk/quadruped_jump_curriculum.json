@@ -1,0 +1,14 @@
+{
+	"_comment": "Solid-hurdle jumping curriculum (#286). Warm-started from the hurdles runner, so it starts by confirming the run still works in the solid world (mean_reward), then ramps SOLID hurdle height low->tall, promoting on success_rate = fraction of episodes clearing >=1 hurdle (the right signal when a solid wall gates forward reward).",
+	"stages": [
+		{"name": "flat", "params": {"hurdle_count": 0, "hurdle_height": 0.08, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "mean_reward", "threshold": 20.0, "window": 20, "min_episodes": 20}},
+		{"name": "tiny", "params": {"hurdle_count": 2, "hurdle_height": 0.08, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "success_rate", "threshold": 0.5, "window": 25, "min_episodes": 25}},
+		{"name": "low", "params": {"hurdle_count": 3, "hurdle_height": 0.15, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "success_rate", "threshold": 0.45, "window": 25, "min_episodes": 25}},
+		{"name": "med", "params": {"hurdle_count": 3, "hurdle_height": 0.22, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "success_rate", "threshold": 0.4, "window": 30, "min_episodes": 30}},
+		{"name": "tall", "params": {"hurdle_count": 4, "hurdle_height": 0.3, "hurdle_spacing": 8.0}}
+	]
+}

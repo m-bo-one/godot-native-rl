@@ -13,6 +13,11 @@ extends Node3D
 @export var start_z := 8.0          ## first hurdle's Z (creature starts at 0, runs +Z)
 @export var hurdle_width := 6.0     ## track-spanning X extent
 @export var hurdle_depth := 0.3
+# Solid mode (#286): when true the hurdles PHYSICALLY collide with the creature (it must jump over),
+# and the visible mesh is a real wall at the true collision height. When false (default) the hurdles
+# are perception-only (#60 M2 / #277: sensor reads them, creature passes through) — unchanged, so the
+# shipped quadruped_hurdles_* scenes and net stay byte-identical.
+@export var solid := false
 
 var _next_index := 0  # first hurdle z not yet passed (episode-monotonic)
 
@@ -48,25 +53,38 @@ func rebuild() -> void:
 
 func _make_hurdle(z: float, height: float) -> StaticBody3D:
 	var body := StaticBody3D.new()
-	body.collision_layer = 2
+	# Perception-only default (layer 2, mask 0): the RaycastSensor (mask 2) reads it, the creature never
+	# collides. Solid (#286): layer 3 = bit 1 (creature's default mask 1 collides -> it must jump over) +
+	# bit 2 (the sensor still reads it). Static-vs-static means the ground (layer 1) is unaffected either way.
+	body.collision_layer = 3 if solid else 2
 	body.collision_mask = 0
 	body.position = Vector3(0.0, height / 2.0, z)
-	# The collision box drives the closeness RaycastSensor3D (the net's hurdle perception). It is kept
-	# at the TRAINED height and left MESH-LESS (invisible) so the deployed policy behaves byte-identically
-	# (#277 is cosmetic-only — no retrain). By design the hurdles never physically collide with the
-	# creature (collision_mask = 0), so a full-height visible box looked like the creature running THROUGH
-	# a wall. The visible mesh below is decoupled from this box.
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(hurdle_width, height, hurdle_depth)
 	col.shape = shape
 	body.add_child(col)
-	# Visible hurdle (#277): a low, bright athletic-hurdle gate (two standards + a crossbar) the trotting
-	# gait visibly clears, with a crossbar height that clearly ASCENDS along the track. Decoupled from the
-	# invisible sensor box so the demo reads as "clearing ascending hurdles" without changing what the net
-	# senses or does.
-	body.add_child(_make_hurdle_visual(height))
+	if solid:
+		# Solid: a real wall the creature must clear — the visible mesh IS the collision box (honest,
+		# since it now physically blocks), so what you see is what it jumps.
+		body.add_child(_make_solid_visual(height))
+	else:
+		# Perception-only (#277): a low, bright athletic-hurdle gate decoupled from the (non-colliding)
+		# sensor box so the demo reads as "clearing ascending hurdles" without changing what the net senses.
+		body.add_child(_make_hurdle_visual(height))
 	return body
+
+# Solid wall visual (#286): a single box matching the collision shape, centered on the body origin
+# (which the body already offsets to height/2), so the mesh exactly overlays the physical barrier.
+func _make_solid_visual(height: float) -> Node3D:
+	var mesh := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(hurdle_width, height, hurdle_depth)
+	mesh.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.30, 0.24)  # brick-red barrier
+	mesh.material_override = mat
+	return mesh
 
 # Pure-ish visual builder: a classic athletic-hurdle silhouette sitting on the ground (it undoes the
 # body's y offset) — two white standards with a coloured crossbar on top — whose height maps the
@@ -117,6 +135,15 @@ func count_newly_passed(torso_z: float) -> int:
 
 func reset_progress() -> void:
 	_next_index = 0
+
+# Signed distance from `torso_z` to the NEXT un-passed hurdle's near face (positive = ahead). Returns
+# a large sentinel when every hurdle is passed / none exist — used by the jump-launch reward to time
+# the leap (#286). Monotonic with count_newly_passed via the shared _next_index.
+func dist_to_next_hurdle(torso_z: float) -> float:
+	var layout := zs()
+	if _next_index >= layout.size():
+		return 1e9
+	return float(layout[_next_index]) - hurdle_depth / 2.0 - torso_z
 
 # CurriculumController target: stage params rebuild the track at the episode boundary.
 func apply_curriculum(params: Dictionary) -> void:

@@ -128,6 +128,10 @@ func forward_velocity() -> float:
 func lateral_velocity() -> float:
 	return _rig["torso"].linear_velocity.x
 
+# World-frame vertical speed (Y). The jump-launch reward signal for the solid-hurdle task (#286).
+func vertical_velocity() -> float:
+	return _rig["torso"].linear_velocity.y
+
 # Hinge has no direct angle read; estimate each child segment's pitch relative to its parent
 # about the hinge (local X). Order matches the builder's joints array.
 func joint_angles() -> Array:
