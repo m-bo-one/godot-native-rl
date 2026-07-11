@@ -31,8 +31,10 @@ echo "Starting SB3 PPO trainer (timesteps=$TIMESTEPS)..."
 	--save_model_path "$OUT.zip" --pt_export_path "$OUT.pt" --checkpoint_dir "$CKPT_DIR" "${INIT_ARG[@]}" &
 TRAINER_PID=$!
 
-# Give the trainer a moment to bind the server socket before Godot connects.
-sleep 5
+# Give the trainer a moment to bind the server socket before Godot connects. Configurable because a
+# cold torch/SB3 import + an --init_from checkpoint load can take >5s under load; if Godot launches
+# first it falls back to HUMAN mode and the trainer's accept() then times out (a startup race).
+sleep "${STARTUP_DELAY:-5}"
 
 echo "Launching headless Godot training scene..."
 "$GODOT" --headless --path . "$SCENE" "speedup=$SPEEDUP" "action_repeat=$ACTION_REPEAT" &
