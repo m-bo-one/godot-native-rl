@@ -1,12 +1,12 @@
 {
-	"_comment": "Solid-hurdle jumping curriculum (#286), v3 — targets reliably chaining MULTIPLE 0.50m solid leaps. Warm-started from the v2 net (already clears one 0.50m wall), it re-confirms the leap, then adds a 0.50m hurdle at a time (two->three->max) so the policy learns to LAND-RECOVER-LEAP repeatedly, dwelling on the full 4x0.50m course for the bulk of training. Paired with the world scene's landing-recovery reward (looser fall_height/fall_upright so a hard landing recovers, clear_bonus=5 per hurdle, finish_bonus for completing). Promotes on success_rate (>=1 clear); the per-hurdle clear_bonus + long dwell on max drive the actual chaining.",
+	"_comment": "Solid-hurdle jumping curriculum (#286), v4 — targets reliably CHAINING multiple TALL leaps. Prior runs plateaued at ~1 clear because the creature couldn't RECOVER between near-maximal leaps, so v4's key change is WIDER SPACING (12m) for recovery room, at an achievable tall height (chain 3x 0.40m) rather than 0.50m (which appears beyond this blocky rig to chain). Warm-started from v2 (clean single leaper). Paired with the world scene's recovery reward (loose fall_height/fall_upright, clear_bonus=5, finish_bonus=8 for completing). Ramps: 2x0.30 -> 2x0.40 -> 3x0.35 -> 3x0.40, all spacing 12; dwells on the 3x0.40 course.",
 	"stages": [
-		{"name": "warmup", "params": {"hurdle_count": 2, "hurdle_height": 0.30, "hurdle_spacing": 8.0},
+		{"name": "warmup", "params": {"hurdle_count": 2, "hurdle_height": 0.30, "hurdle_spacing": 12.0},
 		 "promote": {"metric": "success_rate", "threshold": 0.6, "window": 30, "min_episodes": 30}},
-		{"name": "two", "params": {"hurdle_count": 2, "hurdle_height": 0.50, "hurdle_spacing": 8.0},
+		{"name": "two40", "params": {"hurdle_count": 2, "hurdle_height": 0.40, "hurdle_spacing": 12.0},
 		 "promote": {"metric": "success_rate", "threshold": 0.5, "window": 40, "min_episodes": 40}},
-		{"name": "three", "params": {"hurdle_count": 3, "hurdle_height": 0.50, "hurdle_spacing": 8.0},
+		{"name": "three35", "params": {"hurdle_count": 3, "hurdle_height": 0.35, "hurdle_spacing": 12.0},
 		 "promote": {"metric": "success_rate", "threshold": 0.45, "window": 40, "min_episodes": 40}},
-		{"name": "max", "params": {"hurdle_count": 4, "hurdle_height": 0.50, "hurdle_spacing": 8.0}}
+		{"name": "max", "params": {"hurdle_count": 3, "hurdle_height": 0.40, "hurdle_spacing": 12.0}}
 	]
 }
