@@ -128,3 +128,25 @@ open on #286.
 `train_quadruped.sh`'s startup `sleep` → Godot falls to HUMAN mode and the trainer's `accept()` times
 out. Fix: `STARTUP_DELAY` env knob, or launch Godot only after the trainer logs "waiting for remote
 GODOT connection" (race-free).
+
+## Chaining attempts v3 & v4 — reliably chaining MULTIPLE tall leaps is beyond this rig (finding)
+
+Two further 6M-step runs targeted the open goal (chain several 0.3–0.5 m solid leaps):
+
+- **v3** — recovery-focused reward (looser `fall_height` 0.32 / `fall_upright` 0.15, `clear_bonus`→5,
+  `finish_bonus`, straight-to-0.50m curriculum). Its 3M checkpoint was **no better than v2** (~1 clear,
+  ~8 m); the run then stalled on a Jolt physics hang. Not adopted.
+- **v4** — the best untried lever: **wider hurdle spacing (8→12 m) for recovery room** at an
+  achievable tall height (curriculum chaining to 3×0.40 m), `fall_upright` 0.18. It promoted cleanly
+  through the chaining stages (strong training reward ~70), but the deployed **deterministic** net
+  clears exactly **1/3** at every height (0.30/0.40/0.50 m), reaching only ~8.3 m — it clears the
+  first tall wall then cannot recover, and is in fact *worse* than v2 (which reaches ~15.7 m after its
+  clear). Not adopted.
+
+**Conclusion:** across v1–v4 (varied reward shaping, curricula, hurdle spacing, warm-starts) the gait
+plateaus at **~1 clean tall clear** — the blocky 6 kg / 40-impulse-motor rig can leap a single solid
+0.3–0.5 m wall but **cannot recover its gait fast enough to chain a second near-maximal leap**. The
+recurring wall is *landing recovery*, not the launch. Reliable multi-hurdle tall chaining likely needs
+a stronger/lighter rig or higher motor authority — it stays **open on #286** as a rig-limited target,
+not a reward-tuning one. **v2 remains the shipped good model** (a clean single leap over any solid
+0.3–0.5 m wall); the v2 training config (curriculum + world scene) is restored to match it.

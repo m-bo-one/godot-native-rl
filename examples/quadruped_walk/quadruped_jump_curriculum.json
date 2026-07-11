@@ -1,12 +1,16 @@
 {
-	"_comment": "Solid-hurdle jumping curriculum (#286), v4 — targets reliably CHAINING multiple TALL leaps. Prior runs plateaued at ~1 clear because the creature couldn't RECOVER between near-maximal leaps, so v4's key change is WIDER SPACING (12m) for recovery room, at an achievable tall height (chain 3x 0.40m) rather than 0.50m (which appears beyond this blocky rig to chain). Warm-started from v2 (clean single leaper). Paired with the world scene's recovery reward (loose fall_height/fall_upright, clear_bonus=5, finish_bonus=8 for completing). Ramps: 2x0.30 -> 2x0.40 -> 3x0.35 -> 3x0.40, all spacing 12; dwells on the 3x0.40 course.",
+	"_comment": "Solid-hurdle jumping curriculum (#286), v2 — pushes toward reliable MULTI-hurdle 0.3-0.5m leaping. Warm-started from the v1 jump net, it re-confirms the run (mean_reward), then a CHAIN stage (many moderate hurdles) forces clear-then-recover-then-clear before ramping height tall->taller->0.5m. Promotes on success_rate = fraction of episodes clearing >=1 hurdle (the reward's per-hurdle clear_bonus drives the actual chaining; the metric just gates progression). Longer windows so each gait consolidates before the height rises.",
 	"stages": [
-		{"name": "warmup", "params": {"hurdle_count": 2, "hurdle_height": 0.30, "hurdle_spacing": 12.0},
+		{"name": "flat", "params": {"hurdle_count": 0, "hurdle_height": 0.08, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "mean_reward", "threshold": 20.0, "window": 20, "min_episodes": 20}},
+		{"name": "warmup", "params": {"hurdle_count": 3, "hurdle_height": 0.20, "hurdle_spacing": 8.0},
 		 "promote": {"metric": "success_rate", "threshold": 0.6, "window": 30, "min_episodes": 30}},
-		{"name": "two40", "params": {"hurdle_count": 2, "hurdle_height": 0.40, "hurdle_spacing": 12.0},
+		{"name": "chain", "params": {"hurdle_count": 5, "hurdle_height": 0.25, "hurdle_spacing": 6.0},
 		 "promote": {"metric": "success_rate", "threshold": 0.5, "window": 40, "min_episodes": 40}},
-		{"name": "three35", "params": {"hurdle_count": 3, "hurdle_height": 0.35, "hurdle_spacing": 12.0},
-		 "promote": {"metric": "success_rate", "threshold": 0.45, "window": 40, "min_episodes": 40}},
-		{"name": "max", "params": {"hurdle_count": 3, "hurdle_height": 0.40, "hurdle_spacing": 12.0}}
+		{"name": "tall", "params": {"hurdle_count": 4, "hurdle_height": 0.35, "hurdle_spacing": 7.0},
+		 "promote": {"metric": "success_rate", "threshold": 0.4, "window": 40, "min_episodes": 40}},
+		{"name": "taller", "params": {"hurdle_count": 4, "hurdle_height": 0.45, "hurdle_spacing": 8.0},
+		 "promote": {"metric": "success_rate", "threshold": 0.35, "window": 40, "min_episodes": 40}},
+		{"name": "max", "params": {"hurdle_count": 4, "hurdle_height": 0.50, "hurdle_spacing": 8.0}}
 	]
 }
