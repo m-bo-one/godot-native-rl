@@ -47,6 +47,11 @@ models/quadruped_jump_v2.zip
 models/quadruped_jump_v2.pt
 models/quadruped_jump_v2.pt.shape.json
 models/quadruped_jump_v2_ckpts/
+# Jump training intermediates for any version (v3, v4, …) — deploy nets live in examples/
+models/quadruped_jump_v*.zip
+models/quadruped_jump_v*.pt
+models/quadruped_jump_v*.pt.shape.json
+models/quadruped_jump_v*_ckpts/
 models/quadruped_walk_action_dist.json
 models/quadruped_walk_ckpts/
 # Intermediate SB3 training-checkpoint dirs (deploy nets live in examples/.../models/ instead)
