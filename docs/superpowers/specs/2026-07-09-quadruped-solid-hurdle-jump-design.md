@@ -101,3 +101,30 @@ that lands hard (hence the drop-off after 1–2). Committed: the net (`quadruped
 **Kept open on #286:** reliable multi-hurdle 0.3–0.5 m leaping with a cleaner landing gait (needs
 more training / reward work on landing stability + a stricter clear gate). This pass ships the env +
 shaping + a real first-milestone net.
+
+## Result v2 (2026-07-10, 3M steps, warm-started from the v1 jump net) — SHIPPED NET
+
+Two changes vs v1: `jump_vy_cap` 3.0→1.5 (reward a controlled hop, not the wasteful explosive
+launch) and a **chain→tall→taller→max** curriculum ramping to **0.50 m** (a chain stage of 5 moderate
+hurdles first, then height). The curriculum raced all 8 worlds to the **max (0.50 m)** stage by ~1.2M
+steps. v2 trades v1's low-height chaining for a **taller, cleaner** leap:
+
+| Solid hurdle height | Best reach | Cleared (of 4) | (v1 for comparison) |
+|---|---|---|---|
+| 0.20 m | 15.9 m | 1 | (v1: **2**) |
+| 0.30 m | **15.7 m** | 1 | (v1: 8.5 m / 1) |
+| 0.40 m | 9.4 m | 1 | (v1: —) |
+| 0.50 m | 8.3 m | **1** | (v1: —) |
+
+All reproducible (3/3 identical runs). v2 **reliably leaps the first solid wall at every height
+0.3–0.5 m**, including a **solid 0.50 m wall** (the top of the #286 range), with a cleaner ~1.17 m
+apex at 0.40 m (vs v1's 1.5 m nose-dive) and the torso kept level. On #286's core ask — clearing a
+0.3–0.5 m barrier — **v2 wins on the height axis**, so it is the shipped net; the regression moved to
+**0.30 m** (reliably 15.7 m / 1 clear). Honest limit unchanged: it clears **1** tall wall reliably,
+**not** multiple — the second wall still stops it. Reliable *multi*-hurdle 0.3–0.5 m leaping stays
+open on #286.
+
+**Training gotcha (fixed):** a cold torch import + `--init_from` load can exceed
+`train_quadruped.sh`'s startup `sleep` → Godot falls to HUMAN mode and the trainer's `accept()` times
+out. Fix: `STARTUP_DELAY` env knob, or launch Godot only after the trainer logs "waiting for remote
+GODOT connection" (race-free).

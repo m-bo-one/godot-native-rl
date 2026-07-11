@@ -209,12 +209,20 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   Adds jump-launch reward shaping (`jump_weight`, pure `JumpMath.approach_jump_reward` rewards upward
   torso velocity while a hurdle is close ahead — both **gated off by default so the shipped
   perception net is byte-identical**) + a low→tall solid curriculum promoting on `success_rate`.
-  Warm-started from the hurdles runner (same 35-dim obs), the net learned a real (wild lunging)
-  leap: it clears a **solid 0.30 m wall** (torso-height — the first hurdle) and chains **two solid
-  0.20 m walls** (~17 m), deployed in `quadruped_jump_track.tscn`, behavioral regression at 0.20 m
-  (`quadruped_jump_trained_scene.tscn`, reliably 2 clears / 17 m). It does NOT yet clear the FULL
-  solid course or 0.5 m — reliable multi-hurdle 0.3–0.5 m leaping stays open on #286. Deploy pins
-  `action_repeat=4`. Screenshot capture: `quadruped_jump_capture.tscn` under `xvfb`.
+  Warm-started from the hurdles runner (same 35-dim obs). The **shipped net is v2** (3M steps,
+  warm-started from the v1 jump net, `jump_vy_cap` lowered 3.0→1.5 for a controlled hop instead of a
+  wild over-launch, + a chain→tall→taller→max curriculum ramping to **0.50 m** — the curriculum races
+  to the max stage by ~1.2M steps): it reliably **leaps the first solid wall at ANY height 0.3–0.5 m**
+  (clears a **solid 0.50 m wall** — the top of the target range — and reaches ~15.7 m at 0.30 m), with
+  a cleaner, lower, more level leap (~1.17 m apex at 0.40 m vs v1's 1.5 m nose-dive). Deployed in
+  `quadruped_jump_track.tscn`; behavioral regression at **0.30 m** (`quadruped_jump_trained_scene.tscn`,
+  reliably 15.7 m / 1 clear, min 12 m). Honest limit: it clears **1** tall wall reliably, **not** a full
+  multi-hurdle 0.3–0.5 m course (the second wall stops it) — reliable multi-hurdle tall leaping stays
+  open on #286. (v1 — the earlier wild-dive net that chained two 0.20 m walls but barely cleared 0.30 m
+  — was superseded.) Deploy pins `action_repeat=4`. Screenshot capture: `quadruped_jump_capture.tscn`
+  under `xvfb`. Training gotcha: a cold torch import + `--init_from` load can exceed `train_quadruped.sh`'s
+  startup `sleep` → Godot falls to HUMAN mode and the trainer's `accept()` times out; bump `STARTUP_DELAY`
+  or launch Godot only after the trainer logs "waiting for remote GODOT connection".
 - **Train IN-ENGINE (ES — no Python, no socket, no backprop):** `godot --headless --path .
   res://examples/chase_the_target/chase_es_train.tscn` — the native ES trainer (#131): `ESTrainer`
   node (drop-in for `NcnnSync`; same agent contract, `action_repeat`/`speed_up`) evolves a flat θ
