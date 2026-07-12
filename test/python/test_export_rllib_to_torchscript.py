@@ -27,6 +27,28 @@ class TestActorLogitLayout(unittest.TestCase):
             ex.actor_logit_layout([5, 0])
 
 
+class TestPickModuleId(unittest.TestCase):
+    # #123: multi-policy checkpoints hold one module per policy; --module_id selects it.
+    def test_explicit_id(self):
+        self.assertEqual(ex.pick_module_id(["seeker", "hider"], "hider"), "hider")
+
+    def test_explicit_id_missing_raises_and_lists_ids(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            ex.pick_module_id(["seeker", "hider"], "ghost")
+        self.assertIn("seeker", str(ctx.exception))
+
+    def test_default_policy_preferred(self):
+        self.assertEqual(ex.pick_module_id(["default_policy"], None), "default_policy")
+
+    def test_single_key_fallback(self):
+        self.assertEqual(ex.pick_module_id(["only"], None), "only")
+
+    def test_ambiguous_names_module_id_flag(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            ex.pick_module_id(["seeker", "hider"], None)
+        self.assertIn("--module_id", str(ctx.exception))
+
+
 class TestLatestCheckpoint(unittest.TestCase):
     def test_returns_newest_by_mtime(self):
         # train_rllib.py saves checkpoints as <train_dir>/<experiment>/checkpoint_NNNNNN/.

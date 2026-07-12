@@ -146,9 +146,11 @@ for kinematic/seedable envs. Corrected experiment + numbers in the ES spec.
   Training backends: SB3 (`train_chase.sh`), CleanRL (`train_cleanrl.sh`), SampleFactory async PPO
   (`train_sf.sh`, isolated `.venv-sf`, exports via TorchScript→ncnn), Ray/RLlib new-API-stack PPO
   (`train_rllib.sh`, shares `.venv-train` — stock RLlib trains against an unmodified env over the
-  godot_rl wire protocol, exports via TorchScript→ncnn). PettingZoo `ParallelEnv`
+  godot_rl wire protocol, exports via TorchScript→ncnn), and SKRL PPO (`train_skrl.sh`, optional
+  `requirements-skrl.txt` add-on). PettingZoo `ParallelEnv`
   interop via our own `GodotParallelEnv` adapter (`train_pettingzoo.sh`; conformance proven with
-  PettingZoo's `parallel_api_test`).
+  PettingZoo's `parallel_api_test`), including stock **multi-policy RLlib** over it
+  (`train_rllib_pettingzoo.sh` — one RLlib policy per `agent_policy_names` entry).
 - Convert (`scripts/export_to_ncnn.py`) and INT8 quantize for deployment.
 
 ## Policy Debugger

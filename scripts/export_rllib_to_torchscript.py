@@ -71,6 +71,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--obs_dim", type=int, default=5)
     p.add_argument("--nvec", type=int, nargs="+", default=[5])
     p.add_argument("--out", type=str, default="models/chase_rllib_policy.pt")
+    p.add_argument("--module_id", type=str, default=None,
+                   help="module id to export from a multi-policy checkpoint (#123); "
+                        "default: 'default_policy' / the single module")
     return p.parse_args(argv)
 
 
@@ -88,7 +91,23 @@ def _structure_error(detail: str) -> RuntimeError:
     )
 
 
-def _load_actor_parts(checkpoint_dir: str):
+def pick_module_id(keys: Sequence[str], requested: str | None) -> str:
+    """Which module of a MultiRLModule to export (pure). An explicit request must exist
+    (error lists the available ids); otherwise 'default_policy' if present, else the single
+    key, else fail loud pointing at --module_id (multi-policy checkpoints, #123)."""
+    keys = list(keys)
+    if requested is not None:
+        if requested not in keys:
+            raise RuntimeError(f"module id {requested!r} not in checkpoint (available: {keys})")
+        return requested
+    if DEFAULT_MODULE_ID in keys:
+        return DEFAULT_MODULE_ID
+    if len(keys) == 1:
+        return keys[0]
+    raise RuntimeError(f"ambiguous module ids {keys}; pass --module_id to select one")
+
+
+def _load_actor_parts(checkpoint_dir: str, module_id: str | None = None):
     """RLModule checkpoint -> (actor_encoder_net, pi_net, rl_module) or fail loud.
 
     The actor path of 2.55's DefaultPPOTorchRLModule is two plain tensor->tensor TorchMLPs:
@@ -108,13 +127,9 @@ def _load_actor_parts(checkpoint_dir: str):
 
     # A MultiRLModule keyed by module id; single-module checkpoints may load directly.
     if hasattr(module, "keys"):
-        keys = list(module.keys())
-        if DEFAULT_MODULE_ID in keys:
-            module = module[DEFAULT_MODULE_ID]
-        elif len(keys) == 1:
-            module = module[keys[0]]
-        else:
-            raise _structure_error(f"ambiguous module ids {keys}")
+        module = module[pick_module_id(list(module.keys()), module_id)]
+    elif module_id is not None:
+        raise _structure_error(f"--module_id {module_id!r} given but checkpoint is single-module")
 
     encoder = getattr(module, "encoder", None)
     actor_encoder = getattr(encoder, "actor_encoder", None)
@@ -136,8 +151,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     total_logits, _nvec = actor_logit_layout(args.nvec)
 
     ckpt = args.checkpoint or latest_checkpoint(args.train_dir, args.experiment)
-    print("loading RLlib checkpoint:", ckpt)
-    actor_encoder_net, pi_net, rl_module = _load_actor_parts(ckpt)
+    print("loading RLlib checkpoint:", ckpt,
+          ("(module_id=%s)" % args.module_id) if args.module_id else "")
+    actor_encoder_net, pi_net, rl_module = _load_actor_parts(ckpt, args.module_id)
 
     class ScriptableActor(nn.Module):
         """obs -> actor encoder MLP -> pi head -> raw action logits (single in/out)."""

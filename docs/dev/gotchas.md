@@ -209,3 +209,17 @@ uncounted) shows which bucket is empty; REST usually still has full budget.
   so a change touching only docs creates no check-runs. `pr_merge_when_green.sh` would otherwise wait
   for checks that never appear (40-min timeout) — pass `--no-ci-wait` (alias `--docs`) to merge such
   a PR as soon as it is mergeable. Any code/build/workflow change still runs the full matrix.
+
+## Ray cloudpickles `__main__` functions BY VALUE — module globals are per-function copies
+
+`ray.tune.registry.register_env` (and RLlib config functions like `policy_mapping_fn`) are
+serialized with **cloudpickle**, which pickles functions defined in `__main__` **by value** —
+including a private copy of every module-level global they reference. So an env-creator that fills
+a module-level registry dict at env construction, and a `policy_mapping_fn` that reads that same
+dict, silently get **two different dicts**: the env fills its copy, the mapping fn reads its own
+(empty) copy. Bit live on #123 (`agent 0 missing from AGENT_POLICY_REGISTRY {}`) even with
+`num_env_runners=0` — same process, still copied at pickle time.
+
+**Rule:** never pass runtime-discovered state between ray-registered functions through module
+globals. Use a file (the #123 fix: the env writes `agent_policies.json`, the mapping fn lazily
+reads it) or ship the state inside `env_config` when it's known up front.

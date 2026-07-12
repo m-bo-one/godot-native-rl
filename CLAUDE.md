@@ -301,6 +301,22 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   exports the RLModule actor → TorchScript → `export_to_ncnn.py`. Ecosystem interop (#110), not a
   replacement for the custom trainers. `TIMESTEPS`/`SPEEDUP`/`ACTION_REPEAT`/`BASE_PORT`/
   `EXPERIMENT`/`TRAIN_DIR`/`OUTDIR`/`SCENE` overrides.
+- **Train (multi-policy RLlib via PettingZoo):** `./scripts/train_rllib_pettingzoo.sh` — stock
+  RLlib **multi-agent** PPO over `ParallelPettingZooEnv(GodotParallelEnv)` (#123): one policy
+  module per `agent_policy_names` entry (hide & seek seeker+hider), spaces squeezed per agent
+  (`Dict['obs']`→Box, `Tuple(Discrete)`→Discrete), each RLModule actor → TorchScript
+  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The env writes
+  `agent_policies.json`+`env_meta.json` at construction; the `policy_mapping_fn` reads the FILE —
+  ray cloudpickles `__main__` functions by value, so module-global registries are per-function
+  copies (gotcha, see docs/dev/gotchas.md). Same overrides as the RLlib backend; guarded smoke.
+- **Train (chase, SKRL backend):** `./scripts/train_skrl.sh` — stock **skrl 2.1** PPO (torch) over
+  the shared single-agent gymnasium adapter (#25, backlog 19); models are user-authored skrl
+  mixin classes over plain `nn.Sequential` trunks, so the deploy trunk (obs→logits) is traced to
+  TorchScript **inline** (no checkpoint introspection) → `export_to_ncnn.py`. Optional
+  `requirements-skrl.txt` add-on for `.venv-train` (ray-add-on pattern); guarded smoke. skrl 2.1
+  gotchas: `PPO_CFG` dataclass (v1's dict is gone) and `Model.compute` is called **positionally**
+  — define `compute(self, inputs, role="")`. `TIMESTEPS`/`ROLLOUTS`/`BASE_PORT`/`OUTDIR`/`SCENE`
+  overrides.
 - **Train (chase, NumPy twin — NO Godot, NO socket):** `./scripts/train_chase_twin.sh` (#37) — SB3 PPO
   over `scripts/chase_twin_env.py`, a pure-NumPy Gymnasium **twin** of the chase env that reproduces
   the Godot dynamics EXACTLY (obs byte-identical to `ChaseObs`; `action_repeat=8` sub-frames at Δt=1/60

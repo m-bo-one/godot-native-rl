@@ -193,7 +193,9 @@ C++ runner (needs a `PIXEL_GRAY` path in `NcnnRunner`).
 | `CleanRLGodotEnv` | ✅ | ✅ item 17 done | — |
 | `RayVectorGodotEnv` (RLlib) | ✅ | ✅ done (#110) — `train_rllib.sh`, new-API-stack PPO via a custom gymnasium adapter (the stock wrapper is old-API-stack only), TorchScript→ncnn, shares `.venv-train` (#126) | — |
 | `GDRLPettingZooEnv` (PettingZoo, multi-policy) | ✅ | ✅ `GodotParallelEnv` in `scripts/godot_pettingzoo_env.py` — `GDRLPettingZooEnv` functionality without the upstream class; `parallel_api_test` conformance; live-trained two-policy fixtures + golden/LOS regression shipped (#118) | ✅ done (#111) |
+| RLlib **multi-policy** via PettingZoo (`ParallelPettingZooEnv`) | ✅ (canonical upstream combo) | ✅ done (#123) — `train_rllib_pettingzoo.sh`: stock RLlib multi-agent PPO over `ParallelPettingZooEnv(GodotParallelEnv)`, one module per `agent_policy_names` entry, per-policy `--module_id` TorchScript→ncnn export, guarded smoke | — |
 | `SampleFactoryEnvWrapper` (batched + non-batched) | ✅ | ✅ done (#24) — `train_sf.sh`, async PPO, TorchScript→ncnn, isolated `.venv-sf` | — |
+| SKRL backend | — (not in godot_rl) | ✅ done (#25) — `train_skrl.sh`: stock skrl 2.1 PPO over the shared gymnasium adapter, inline TorchScript trunk export→ncnn, optional `requirements-skrl.txt` add-on, guarded smoke | Beyond parity |
 | ONNX export helper (`OnnxablePolicy`) | ✅ SB3/SAC → ONNX | ✅ `export_to_ncnn.py` ONNX+TorchScript→ncnn | Different, covered |
 | Optuna HP tuning example | ✅ | ✅ done (#113) — `tune_optuna.sh`/`tune_optuna.py`: Optuna PPO study over an example, maximizes `ep_rew_mean`, one Godot client per trial, isolated `optuna` dep (`requirements-tune.txt`), pure helpers unit-tested | — |
 
