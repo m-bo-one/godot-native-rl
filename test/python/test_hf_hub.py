@@ -62,6 +62,20 @@ class TestCollectModelFiles(unittest.TestCase):
             names = sorted(p.name for p in hf_hub.collect_model_files(d / "m.ncnn.param"))
             self.assertEqual(names, ["m.ncnn.bin", "m.ncnn.param"])
 
+    def test_vecnorm_sidecar_rides_along(self):
+        # #363: the VecNormalize obs-norm stats JSON follows the stem-coupled `_vecnorm.json`
+        # convention, so it uploads/downloads with the net it belongs to.
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            _touch(d, "rover.ncnn.param")
+            _touch(d, "rover.ncnn.bin")
+            _touch(d, "rover_vecnorm.json")
+            names = sorted(p.name for p in hf_hub.collect_model_files(d / "rover"))
+            self.assertEqual(names, ["rover.ncnn.bin", "rover.ncnn.param", "rover_vecnorm.json"])
+
+    def test_pull_patterns_include_vecnorm(self):
+        self.assertIn("*_vecnorm.json", hf_hub.PULL_PATTERNS)
+
     def test_missing_bin_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
@@ -82,6 +96,7 @@ class TestStemOf(unittest.TestCase):
         self.assertEqual(hf_hub.stem_of(Path("models/chase.ncnn.param")), "chase")
         self.assertEqual(hf_hub.stem_of(Path("models/chase.ncnn.bin")), "chase")
         self.assertEqual(hf_hub.stem_of(Path("models/chase")), "chase")
+        self.assertEqual(hf_hub.stem_of(Path("models/rover_vecnorm.json")), "rover")
 
 
 class TestBuildModelCard(unittest.TestCase):
@@ -99,6 +114,15 @@ class TestBuildModelCard(unittest.TestCase):
     def test_deterministic(self):
         files = [Path("m.ncnn.param"), Path("m.ncnn.bin")]
         self.assertEqual(hf_hub.build_model_card("o/r", files), hf_hub.build_model_card("o/r", files))
+
+    def test_vecnorm_deploy_hint(self):
+        # #363: a policy shared WITH obs-norm stats gets a card hint naming the controller
+        # property, so the puller wires it (deploying without the stats is silently wrong).
+        files = [Path("m.ncnn.param"), Path("m.ncnn.bin"), Path("m_vecnorm.json")]
+        card = hf_hub.build_model_card("o/r", files)
+        self.assertIn("obs_norm_stats_path", card)
+        self.assertIn("m_vecnorm.json", card)
+        self.assertNotIn("obs_norm_stats_path", hf_hub.build_model_card("o/r", files[:2]))
 
 
 class TestParseArgs(unittest.TestCase):

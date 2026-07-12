@@ -370,6 +370,8 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
 - **Export VecNormalize stats (deploy):** `.venv-train/bin/python scripts/export_vecnormalize.py
   vec_normalize.pkl` → JSON; set the controller's `obs_norm_stats_path` so `ObsNormalize` replays
   the obs mean/std game-side before inference (policies trained with SB3 `VecNormalize`).
+  `--stem <model-stem>` writes the stem-coupled `<stem>_vecnorm.json` instead (#363) so the stats
+  ride along on a Hub push/pull.
 - **Export continuous action std (deploy):** `.venv-train/bin/python scripts/export_action_dist.py
   models/policy.zip` → `*_action_dist.json`; set the controller's `action_dist_stats_path` and
   `deterministic_inference=false` so `ActionDecode` samples `mean + std·N(0,1)` (PPO DiagGaussian,
@@ -380,7 +382,8 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   argmax-parity). Produces `m_int8.ncnn.{param,bin}`; deploy via `NcnnRunner` like fp32.
 - **Share/fetch models on Hugging Face Hub (#31):** `.venv-train/bin/python scripts/hf_hub.py push
   <dir|stem> <repo_id>` uploads a model dir (all models) or one stem/param path (that model + its
-  `*.recurrent.json`/`*_action_dist.json` sidecars) with an auto-generated model card;
+  `*.recurrent.json`/`*_action_dist.json`/`*_vecnorm.json` sidecars, #363 — the card gains an
+  `obs_norm_stats_path` deploy hint when norm stats ship) with an auto-generated model card;
   `pull <repo_id> <dest>` fetches them back. Token: `--token` → `HF_TOKEN` → cached login. Isolated
   opt-in dep — install once: `.venv-train/bin/pip install -r requirements-hub.txt` (`huggingface_hub`
   is imported lazily, so the pure helpers stay import-free). Pure helpers + injected-client

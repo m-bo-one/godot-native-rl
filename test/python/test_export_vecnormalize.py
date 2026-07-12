@@ -47,6 +47,21 @@ def _make_vecnormalize(seed: int = 0, obs_dim: int = 4):
     return vn
 
 
+class TestResolveOutPath(unittest.TestCase):
+    # #363: `--stem <model-stem>` writes the stem-coupled `<stem>_vecnorm.json` that
+    # hf_hub.collect_model_files picks up, so the stats ride along with the shared net.
+    def test_stem_convention(self):
+        self.assertEqual(ev.resolve_out_path(Path("m/vec.pkl"), None, "examples/x/models/rover"),
+                         Path("examples/x/models/rover_vecnorm.json"))
+
+    def test_explicit_out_wins(self):
+        self.assertEqual(ev.resolve_out_path(Path("m/vec.pkl"), "custom.json", None),
+                         Path("custom.json"))
+
+    def test_default_beside_pkl(self):
+        self.assertEqual(ev.resolve_out_path(Path("m/vec.pkl"), None, None), Path("m/vec.json"))
+
+
 class TestStatsFromVecNormalize(unittest.TestCase):
     @needs_sb3
     def test_extracts_mean_var_epsilon_clip(self):
