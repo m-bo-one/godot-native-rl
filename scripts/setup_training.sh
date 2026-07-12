@@ -22,6 +22,8 @@ REQ_CONVERT="requirements-convert.txt"
 REQ_SF="requirements-sf.txt"
 # Optional ray add-on installed ON TOP of .venv-train (the RLlib backend shares that venv).
 REQ_RLLIB="requirements-rllib.txt"
+# Optional skrl add-on, same pattern (#25).
+REQ_SKRL="requirements-skrl.txt"
 # Shared with CI: freezes the validated numpy/onnx versions for .venv-train (issue #126 retired the
 # old numpy<2/ml_dtypes hack). Convert/SF venvs install without constraints.
 CONSTRAINTS_TRAIN=".github/ci-constraints.txt"
@@ -29,11 +31,11 @@ CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 
 echo "Training stack setup"
-echo "  train venv:   .venv-train  (interpreter: $PYTHON_TRAIN, deps: $REQ_TRAIN + $REQ_RLLIB ray add-on)"
+echo "  train venv:   .venv-train  (interpreter: $PYTHON_TRAIN, deps: $REQ_TRAIN + $REQ_RLLIB/$REQ_SKRL add-ons)"
 echo "  convert venv: .venv        (interpreter: $PYTHON_CONVERT, deps: $REQ_CONVERT)"
 echo "  sf venv:      .venv-sf     (interpreter: $PYTHON_SF, deps: $REQ_SF)"
 
-for f in "$REQ_TRAIN" "$REQ_CONVERT" "$REQ_SF" "$REQ_RLLIB" "$CONSTRAINTS_TRAIN"; do
+for f in "$REQ_TRAIN" "$REQ_CONVERT" "$REQ_SF" "$REQ_RLLIB" "$REQ_SKRL" "$CONSTRAINTS_TRAIN"; do
 	if [ ! -f "$f" ]; then
 		echo "ERROR: missing $f" >&2
 		exit 1
@@ -75,6 +77,7 @@ create_venv "$PYTHON_SF" ".venv-sf" "$REQ_SF"
 
 # RLlib backend shares .venv-train (issue #126): install the ray add-on on top of the base stack.
 ".venv-train/bin/pip" install -c "$CONSTRAINTS_TRAIN" -r "$REQ_RLLIB"
+".venv-train/bin/pip" install -c "$CONSTRAINTS_TRAIN" -r "$REQ_SKRL"
 # godot-rl declares gymnasium<=1.0.0 (+ SB3<=2.4.0), which conflicts with the venv's gymnasium 1.2.2
 # / SB3 2.8.0 / ray; its actual runtime use is compatible, so install it WITHOUT deps.
 ".venv-train/bin/pip" install --no-deps "godot-rl==0.8.2"
