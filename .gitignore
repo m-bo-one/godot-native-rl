@@ -81,6 +81,10 @@ media/*.import
 models/hide_seek_seeker.pt
 models/hide_seek_hider.pt
 models/hide_seek_*.pt.shape.json
+# NumPy-twin training artifacts (#37/#364; deploy nets live in examples/chase_the_target/models/)
+models/chase_twin.zip
+models/chase_rays_twin.zip
+models/chase_rays_twin.ncnn.*
 # Coop MA-POCA training artifacts (deploy net lives in examples/coop_collect/models/)
 models/coop_mapoca.zip
 models/coop_mapoca.pt

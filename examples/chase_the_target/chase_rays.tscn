@@ -1,0 +1,79 @@
+[gd_scene load_steps=9 format=3]
+
+; chase_rays play scene (#364): the NumPy-twin-trained net (trained with ANALYTIC rays, no Godot)
+; runs here against REAL physics raycasts + the solid obstacle field. The StaticBody2D boxes exist
+; for the RaycastSensor2D; agent blocking is code-side in chase_rays_game.gd (twin-exact).
+
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_rays_game.gd" id="1"]
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_rays_agent.gd" id="2"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="3"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sensors/raycast_sensor_2d.gd" id="4"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/camera/fit_camera_2d.gd" id="fitcam2d"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+
+[sub_resource type="RectangleShape2D" id="ObstacleShape"]
+size = Vector2(100, 100)
+
+[node name="ChaseGame" type="Node2D"]
+script = ExtResource("1")
+agent_body_path = NodePath("AgentBody")
+target_path = NodePath("Target")
+
+[node name="AgentBody" type="Node2D" parent="."]
+
+[node name="RaySensor" type="Node2D" parent="AgentBody"]
+script = ExtResource("4")
+n_rays = 8
+cone_degrees = 315.0
+ray_length = 300.0
+collision_mask = 1
+
+[node name="Target" type="Node2D" parent="."]
+
+[node name="Obstacle1" type="StaticBody2D" parent="."]
+position = Vector2(300, 200)
+
+[node name="Col1" type="CollisionShape2D" parent="Obstacle1"]
+shape = SubResource("ObstacleShape")
+
+[node name="Obstacle2" type="StaticBody2D" parent="."]
+position = Vector2(700, 200)
+
+[node name="Col2" type="CollisionShape2D" parent="Obstacle2"]
+shape = SubResource("ObstacleShape")
+
+[node name="Obstacle3" type="StaticBody2D" parent="."]
+position = Vector2(300, 400)
+
+[node name="Col3" type="CollisionShape2D" parent="Obstacle3"]
+shape = SubResource("ObstacleShape")
+
+[node name="Obstacle4" type="StaticBody2D" parent="."]
+position = Vector2(700, 400)
+
+[node name="Col4" type="CollisionShape2D" parent="Obstacle4"]
+shape = SubResource("ObstacleShape")
+
+[node name="ChaseAgent" type="Node2D" parent="."]
+script = ExtResource("2")
+game_path = NodePath("..")
+ray_sensor_path = NodePath("../AgentBody/RaySensor")
+control_mode = 3
+model_param_path = "res://examples/chase_the_target/models/chase_rays_twin.ncnn.param"
+model_bin_path = "res://examples/chase_the_target/models/chase_rays_twin.ncnn.bin"
+
+[node name="Sync" type="Node" parent="."]
+script = ExtResource("3")
+control_mode = 2
+
+[node name="PolicyDebugOverlay" type="CanvasLayer" parent="."]
+script = ExtResource("5")
+
+[node name="FitCamera2D" type="Camera2D" parent="."]
+script = ExtResource("fitcam2d")
+world_rect = Rect2(0, 0, 1000, 600)
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("CYAN = agent, RED = target, BROWN boxes = solid obstacles", "trained 100% in NumPy (no engine) — rays here are REAL physics casts (#364)")

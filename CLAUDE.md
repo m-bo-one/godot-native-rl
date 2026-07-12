@@ -326,6 +326,16 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   **sim-to-deploy gap** is validated in the real engine by `trained_chase_twin_scene.tscn` (standard
   chase behavioral checker, catches ≥ 5). NumPy not JAX — the win is deleting the socket+engine (a JAX
   batch backend is a noted extension, #361). `TIMESTEPS`/`N_ENVS`/`OUT`/`OUTDIR` overrides.
+  **Raycast twin (#364):** `./scripts/train_chase_rays_twin.sh` — the same approach with the missing
+  RAY axis proven: `chase_rays` = chase + 4 solid AABB obstacles (CODE-side minimal-penetration
+  blocking, twin-exact — not engine physics) + an 8-ray surround `RaycastSensor2D` (cone 315°,
+  length 300; obs 5+8=13). The twin's slab-method **analytic ray-vs-AABB matches the engine's real
+  physics raycasts EXACTLY** (worst |err| 0.0 on the committed golden fixture
+  `test/fixtures/chase_rays_golden_obs.json`, pinned from BOTH sides — `test_chase_rays.gd` real
+  physics vs `test_chase_rays_twin_env.py` analytic), so the NumPy-trained net (400k steps in ~3 min,
+  ~2200 steps/s) deploys against real casts and catches 15+/1800 frames
+  (`trained_chase_rays_scene.tscn`; play scene `chase_rays.tscn`, in the launcher). Honest limit:
+  only analytic shapes (AABB/circle) twin exactly — Jolt physics envs have no analytic form (#60).
 - **Tune hyperparameters (Optuna):** `./scripts/tune_optuna.sh` — an Optuna PPO HP search over an
   example via the godot-rl bridge (#113, godot_rl parity). Each trial samples a PPO HP set, runs a
   short training trial, and reports `ep_rew_mean` (maximized); prints + writes the best set to

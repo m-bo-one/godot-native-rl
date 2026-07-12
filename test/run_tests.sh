@@ -61,6 +61,9 @@ echo "== Trained chase check (headless) =="
 echo "== Trained chase TWIN check: net trained in NumPy (no Godot) deploys back (headless, #37) =="
 "$GODOT" --headless --path . res://test/integration/trained_chase_twin_scene.tscn
 
+echo "== Trained chase RAYS twin check: analytic-ray-trained net vs REAL physics rays (headless, #364) =="
+"$GODOT" --headless --path . res://test/integration/trained_chase_rays_scene.tscn
+
 echo "== Launcher runtime check: change_scene_to_file initializes Sync (#239, headless) =="
 "$GODOT" --headless --path . res://test/integration/launcher_runtime_scene.tscn
 
