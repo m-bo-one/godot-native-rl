@@ -15,6 +15,7 @@ dict in tests). The orchestrator that spawns Godot training runs lives in design
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Callable, Sequence
 
@@ -285,15 +286,22 @@ def build_prompt(game_source: str, manifest: dict, task: str, n: int, reflection
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def build_reflection(best_recipe: dict, per_term_stats: dict, fitness_history: Sequence[float]) -> str:
+def build_reflection(best_recipe: dict, per_term_stats: dict, fitness_history: Sequence[float],
+                     survivors: Sequence[dict] = ()) -> str:
     """The Eureka 'reward reflection': tell the model the current best recipe, how each reward term
     behaved over training (mean/min/max), and the fitness trend, so it can reason about which terms
-    dominate or vanish rather than guessing blindly."""
+    dominate or vanish rather than guessing blindly. `survivors` (the elitism selection, #368) are
+    the other high-fitness recipes of the last generation — shown so the LLM mutates from the whole
+    elite, not just the single best."""
     lines = ["Reflection on the search so far — improve on the current best.",
              "Best recipe:", json.dumps(best_recipe),
              "Per-term reward statistics over the last run (mean/min/max):"]
     for term, stats in per_term_stats.items():
         lines.append(f"  {term}: mean={stats.get('mean')}, min={stats.get('min')}, max={stats.get('max')}")
+    if survivors:
+        lines.append("Survivors (other high-fitness recipes this generation, best first):")
+        for s in survivors:
+            lines.append("  " + json.dumps(s))
     lines.append("Task-fitness by generation (higher is better): " +
                  ", ".join(f"{f:.3f}" for f in fitness_history))
     lines.append("Propose improved recipes: rebalance weights, add/remove a term, or reshape "
@@ -321,13 +329,36 @@ def dedup(recipes: Sequence[dict]) -> list[dict]:
 
 
 def select_survivors(population: Sequence[dict], fitnesses: Sequence[float], keep: int) -> list[dict]:
-    """Elitism: the `keep` highest-fitness recipes, best first. (Mutation is the LLM's job, driven
-    by build_reflection over these survivors.)"""
-    ranked = sorted(zip(population, fitnesses), key=lambda pf: pf[1], reverse=True)
+    """Elitism: the `keep` highest-fitness recipes, best first. NaN fitnesses (failed/too-short
+    evals, #368) are dropped — they'd otherwise poison the sort into arbitrary order. (Mutation is
+    the LLM's job, driven by build_reflection over these survivors.)"""
+    scored = [(r, f) for r, f in zip(population, fitnesses) if not math.isnan(f)]
+    ranked = sorted(scored, key=lambda pf: pf[1], reverse=True)
     return [r for r, _ in ranked[:max(0, keep)]]
 
 
 # --- Fitness extraction (task metric, NOT the searched reward — Eureka's key idea) ---
+
+def fitness_from_infos(step_infos: Sequence[Sequence[dict]]) -> float:
+    """Mean episode return from VecMonitor per-step infos (#368): VecMonitor injects
+    info["episode"] = {"r","l","t"} into an env's info dict on the step its episode ends — that
+    "r" is the SHIPPED-reward episode return, i.e. the fixed task fitness. (VecMonitor has no
+    ep_info_buffer; that buffer lives on the SB3 model and holds candidate-reward returns, which
+    the Eureka design forbids scoring on.) NaN when no episode completed (eval too short)."""
+    returns = [i["episode"]["r"] for infos in step_infos for i in infos if "episode" in i]
+    return sum(returns) / len(returns) if returns else float("nan")
+
+
+def resolve_api_key(provider: str, cli_key: str, env: dict) -> str:
+    """Provider-aware API-key fallback (#368): an explicit --api-key always wins; otherwise only
+    the provider's OWN env var is used (never cross-send e.g. an Anthropic key to OpenRouter).
+    Ollama is local and unauthenticated -> ""."""
+    if cli_key:
+        return cli_key
+    env_var = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}.get(provider)
+    return env.get(env_var, "") if env_var else ""
+
+
 
 def extract_catches(log_text: str) -> float | None:
     """The chase TASK metric: catches from the trained-chase checker line, e.g.

@@ -59,6 +59,20 @@ static func build(game, recipe: Dictionary, affordances: Dictionary) -> Dictiona
 	return {"reward": b.build(), "signal_events": events}
 
 
+## Load + parse a recipe JSON file. Returns the recipe Dictionary, or {} on a missing file,
+## invalid JSON, or non-object JSON (fail loud via push_error, never crash — #368: assigning
+## JSON.parse_string's null straight into a typed Dictionary was a runtime crash in ChaseAgent).
+static func parse_recipe_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		push_error("RewardRecipe: recipe file not found: %s" % path)
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not (parsed is Dictionary):
+		push_error("RewardRecipe: recipe file is not a JSON object: %s" % path)
+		return {}
+	return parsed
+
+
 ## Validate `recipe` against `affordances` and (defensively) the live `game`. Returns a list of
 ## human-readable problems; empty means valid. A name must be BOTH in the manifest (the recipe's
 ## declared vocabulary) AND resolvable on the game (runtime truth).

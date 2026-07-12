@@ -84,15 +84,16 @@ def train_and_evaluate(recipe: dict, port: int, args) -> float:
             eval_env = VecMonitor(StableBaselinesGodotEnv(env_path=None, show_window=False, seed=args.seed,
                                                           n_parallel=1, speedup=args.speedup,
                                                           action_repeat=args.action_repeat, port=eval_port))
+            # Collect VecMonitor's per-step info["episode"] dicts — the FIXED-reward episode
+            # returns are the task fitness (#368: VecMonitor has no ep_info_buffer; that lives on
+            # the SB3 model and holds candidate-reward returns, which must never be scored).
+            step_infos = []
             obs = eval_env.reset()
             for _ in range(args.eval_steps):
                 action, _ = model.predict(obs, deterministic=True)
-                obs, _, _, _ = eval_env.step(action)
-            # ep_info_buffer holds the FIXED-reward episode returns — the task fitness.
-            infos = getattr(eval_env, "ep_info_buffer", None)
-            if not infos:
-                return float("nan")
-            return sum(e["r"] for e in infos) / len(infos)
+                obs, _, _, infos = eval_env.step(action)
+                step_infos.append(infos)
+            return rd.fitness_from_infos(step_infos)
         finally:
             if eval_env is not None:
                 eval_env.close()
@@ -113,7 +114,7 @@ def _kill(proc) -> None:
 def search(args) -> dict:
     manifest = json.loads(_read(MANIFEST_PATH))
     game_src = _read(GAME_SRC_PATH) + "\n\n# agent:\n" + _read(AGENT_SRC_PATH)
-    api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = rd.resolve_api_key(args.provider, args.api_key, os.environ)
     provider = rd.make_provider(args.provider, args.model, api_key=api_key, api_base=args.api_base)
 
     os.makedirs(os.path.join(ROOT, "user_recipes"), exist_ok=True)
@@ -131,11 +132,14 @@ def search(args) -> dict:
             fit = train_and_evaluate(recipe, args.base_port + i, args)
             fitnesses.append(fit)
             print(f"  candidate {i}: fitness {fit:.3f}  {json.dumps(recipe)}")
-            if fit > best_fitness:
+            if fit > best_fitness:  # NaN compares False — a failed eval never becomes best
                 best_fitness, best_recipe = fit, recipe
         fitness_history.append(best_fitness)
+        # select_survivors drops NaN fitnesses (#368); feed the elite into the reflection so the
+        # LLM mutates from the whole surviving population, not just the single best.
         survivors = rd.select_survivors(candidates, fitnesses, keep=max(1, args.candidates // 2))
-        reflection = rd.build_reflection(best_recipe, {}, fitness_history)  # per-term stats: v2
+        reflection = rd.build_reflection(best_recipe, {}, fitness_history,
+                                         survivors=[s for s in survivors if s is not best_recipe])  # per-term stats: v2
 
     print("\nBEST fitness %.3f\nBEST recipe: %s" % (best_fitness, json.dumps(best_recipe, indent=2)))
     if best_recipe is not None and args.out:

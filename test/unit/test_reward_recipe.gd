@@ -99,4 +99,21 @@ func _initialize() -> void:
 	h.assert_eq(RewardRecipe.validate(committed_recipe, committed, world), [],
 		"committed chase_reward_recipe.json validates against the committed manifest")
 
+	# --- parse_recipe_file (#368): missing file / invalid JSON / non-object never crash -> {} ---
+	# (ChaseAgent assigned JSON.parse_string(...) straight into a typed Dictionary; a missing file
+	# made that a runtime Nil-assignment crash instead of the documented fall-back-to-shipped-reward.)
+	h.assert_eq(RewardRecipe.parse_recipe_file("res://no_such_recipe.json"), {}, "missing recipe file -> {}")
+	var bad_json_path := "user://test_bad_recipe.json"
+	var fa := FileAccess.open(bad_json_path, FileAccess.WRITE)
+	fa.store_string("{not valid json")
+	fa.close()
+	h.assert_eq(RewardRecipe.parse_recipe_file(bad_json_path), {}, "invalid JSON -> {}")
+	fa = FileAccess.open(bad_json_path, FileAccess.WRITE)
+	fa.store_string("[1, 2, 3]")
+	fa.close()
+	h.assert_eq(RewardRecipe.parse_recipe_file(bad_json_path), {}, "non-object JSON -> {}")
+	DirAccess.remove_absolute(bad_json_path)
+	var parsed: Dictionary = RewardRecipe.parse_recipe_file("res://examples/chase_the_target/chase_reward_recipe.json")
+	h.assert_true(parsed.has("terms"), "committed recipe file parses to a terms dict")
+
 	h.finish(self)
