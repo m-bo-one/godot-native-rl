@@ -23,6 +23,7 @@ const DEMOS := [
 	["res://examples/coop_collect/coop_collect.tscn", "Coop Collect (MA-POCA)", "Two agents share a reward and split up to collect items."],
 	["res://examples/quadruped_walk/quadruped_walk_track.tscn", "Quadruped Walk (locomotion)", "Code-built quadruped walks ~21m toward the finish (Jolt)."],
 	["res://examples/quadruped_walk/quadruped_hurdles_track.tscn", "Quadruped Hurdles", "Quadruped runs and clears hurdles (raycast perception + curriculum)."],
+	["res://examples/quadruped_walk/quadruped_jump_track.tscn", "Quadruped Jump (solid walls)", "PHYSICALLY-SOLID hurdles — the quadruped genuinely leaps a 0.3-0.5m wall (#286)."],
 	["res://examples/quadruped_walk/hexapod_walk_track.tscn", "Hexapod Walk (6-leg)", "Many-legged morphology — same reward, walks ~21m."],
 	["res://examples/quadruped_walk/quadruped_race.tscn", "Generation Race", "500k vs 2.5M vs 6M training generations race — the learning arc."],
 ]

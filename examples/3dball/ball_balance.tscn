@@ -1,27 +1,56 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://examples/3dball/ball_balance_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/3dball/ball_balance_agent.gd" id="2"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="3"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="4"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="5"]
+[ext_resource type="Script" path="res://examples/3dball/ball_balance_hud.gd" id="6"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
 
 [sub_resource type="BoxShape3D" id="PlatformShape"]
 size = Vector3(5, 0.4, 5)
 
+[sub_resource type="StandardMaterial3D" id="PlatformMaterial"]
+albedo_color = Color(0.16, 0.55, 0.55, 1)
+metallic = 0.1
+roughness = 0.45
+
 [sub_resource type="BoxMesh" id="PlatformMesh"]
+material = SubResource("PlatformMaterial")
 size = Vector3(5, 0.4, 5)
 
 [sub_resource type="SphereShape3D" id="BallShape"]
 radius = 0.5
 
+[sub_resource type="StandardMaterial3D" id="BallMaterial"]
+albedo_color = Color(0.95, 0.5, 0.15, 1)
+emission_enabled = true
+emission = Color(0.4, 0.18, 0.04, 1)
+emission_energy_multiplier = 1.2
+roughness = 0.35
+
 [sub_resource type="SphereMesh" id="BallMesh"]
+material = SubResource("BallMaterial")
 radius = 0.5
 height = 1.0
+
+[sub_resource type="StandardMaterial3D" id="GroundMaterial"]
+albedo_color = Color(0.10, 0.12, 0.16, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="GroundMesh"]
+material = SubResource("GroundMaterial")
+size = Vector3(60, 0.4, 60)
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1")
 platform_path = NodePath("Platform")
 ball_path = NodePath("Ball")
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+position = Vector3(0, -6, 0)
+mesh = SubResource("GroundMesh")
 
 [node name="Platform" type="AnimatableBody3D" parent="."]
 
@@ -59,6 +88,25 @@ shadow_enabled = true
 position = Vector3(7, 5, 7)
 rotation_degrees = Vector3(-28, 45, 0)
 current = true
+script = ExtResource("5")
+game_path = NodePath("..")
+default_offset = Vector3(6, 4.5, 6)
+min_distance = 3.0
+max_distance = 25.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="BalanceLabel" type="Label" parent="HUD"]
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 460.0
+offset_bottom = 34.0
+script = ExtResource("6")
+game_path = NodePath("../..")
 
 [node name="PolicyDebugOverlay" type="CanvasLayer" parent="."]
 script = ExtResource("4")
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("ORANGE ball balanced on the TEAL tilting platform", "2 continuous tilt actions (Unity 3DBall parity)   drag = orbit, scroll = zoom")
