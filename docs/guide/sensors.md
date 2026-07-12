@@ -62,10 +62,15 @@ agent's `get_obs()` and concatenate with your other features.
   `"2d"`** even for a `Camera3D` view (name it e.g. `"camera_3d_2d"`) — `godot_rl` routes image obs
   on that substring, decoding to `Box(0, 255, uint8)` for
   SB3's `MultiInputPolicy`/`NatureCNN` (which does its own `/255`). Size the obs by sizing the
-  `SubViewport`. *Native ncnn **deploy** works for **discrete, RGB** image policies: set the agent's
+  `SubViewport`, or set **`obs_size`** (#362) to decouple the two: the viewport renders at its own
+  (display) resolution and the captured frame is downscaled to `obs_size` before encoding — in both
+  `get_observation()` (training) and `get_image()` (deploy), so one crisp on-screen viewport can
+  feed a cheap 36×36 policy input. `(0, 0)` (default) keeps obs at the viewport's native size.
+  *Native ncnn **deploy** works for **discrete RGB and grayscale** image policies: set the agent's
   `control_mode = NCNN_INFERENCE` and override `get_inference_image()` to return
-  `camera.get_image()` — the controller feeds it to `NcnnRunner.run_inference_image` (RGB8 + `/255`)
-  and acts on the argmax. Grayscale and continuous image policies are follow-ups (backlog item 38/21).*
+  `camera.get_image()` — the controller feeds it to `NcnnRunner.run_inference_image` (`/255`; a
+  grayscale sensor hands back `FORMAT_L8`, auto-detected as 1-channel, #36) and acts on the argmax.
+  Continuous image policies are a follow-up (backlog item 21).*
 - **`GridSensor2D`** (`sensors/grid_sensor_2d.gd`) — a `grid_size_x × grid_size_y` grid of cells
   (size `cell_width × cell_height`) centered on the node. Each `get_observation()` queries the
   physics space fresh and emits, per cell, one *count* float per active `detection_mask` layer bit

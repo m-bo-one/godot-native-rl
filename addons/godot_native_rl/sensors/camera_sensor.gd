@@ -14,6 +14,11 @@ const CameraObsMath = preload("res://addons/godot_native_rl/sensors/camera_obs_m
 @export var grayscale: bool = false
 # Must contain "2d" — godot_rl routes image obs on that substring.
 @export var observation_key: String = "camera_2d"
+# Optional obs-downscale (#362): when both components are > 0, the captured frame is resized to
+# this size before encoding, and get_obs_shape() reports it — so one viewport can render at a
+# crisp display resolution while the policy sees a cheap small input (e.g. 36x36). (0,0) =
+# observations at the viewport's native size (the default; byte-identical to the old behavior).
+@export var obs_size: Vector2i = Vector2i(0, 0)
 
 # Test seam: a Callable() -> Image returning the captured frame. When null, the real
 # viewport texture is read (only works with a rendering context, i.e. in-editor).
@@ -39,7 +44,21 @@ func get_observation_key() -> String:
 func get_obs_shape() -> Array:
 	if viewport == null:
 		return [0, 0, CameraObsMath.channels(grayscale)]
+	if _obs_size_active():
+		return CameraObsMath.obs_shape(obs_size.x, obs_size.y, grayscale)
 	return CameraObsMath.obs_shape(viewport.size.x, viewport.size.y, grayscale)
+
+func _obs_size_active() -> bool:
+	return obs_size.x > 0 and obs_size.y > 0
+
+# Downscale to obs_size when active (#362). Duplicates before resizing so an injected/test image
+# (and the viewport texture's internal Image) is never mutated in place.
+func _apply_obs_size(img: Image) -> Image:
+	if not _obs_size_active() or (img.get_width() == obs_size.x and img.get_height() == obs_size.y):
+		return img
+	var resized: Image = img.duplicate()
+	resized.resize(obs_size.x, obs_size.y)
+	return resized
 
 func get_obs_space_entry() -> Dictionary:
 	return {"space": "box", "size": get_obs_shape()}
@@ -55,6 +74,7 @@ func get_observation() -> String:
 	if img == null or img.is_empty():
 		push_warning("CameraSensor: capture returned no image; returning empty observation.")
 		return ""
+	img = _apply_obs_size(img)  # resize first, then convert (#362)
 	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8
 	if img.get_format() != target_format:
 		var converted: Image = img.duplicate()
@@ -79,6 +99,7 @@ func get_image() -> Image:
 	var img: Image = _capture()
 	if img == null:
 		return null
+	img = _apply_obs_size(img)  # deploy capture matches the training obs resolution (#362)
 	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8
 	if img.get_format() != target_format:
 		img = img.duplicate()
