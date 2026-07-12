@@ -15,6 +15,13 @@ const RAY_OBS_SIZE := 6
 @export var curriculum_path: NodePath  ## this world's CurriculumController (per-world under ParallelArena)
 @export var clear_bonus := 1.0
 @export var sensor_height := 0.5  ## ray origin Y above the ground (level, torso-independent)
+# Jump-launch shaping for the SOLID-hurdle task (#286), gated OFF by default so the shipped
+# perception-only hurdles net is byte-identical. jump_weight>0 rewards upward torso velocity while a
+# hurdle is within jump_zone metres ahead, nudging the creature to launch AT the wall it must clear.
+const JumpMath = preload("res://examples/quadruped_walk/jump_math.gd")
+@export var jump_weight := 0.0
+@export var jump_zone := 2.0     ## metres ahead of a hurdle where an upward launch is rewarded
+@export var jump_vy_cap := 3.0   ## clamp the per-step launch contribution
 # Anti-bypass (#252): instead of a hard out-of-lane terminal (which ended episodes before the policy
 # could learn to recover -> collapsed to a degenerate out-of-lane policy), keep the creature in-lane
 # with a CONTINUOUS lateral-position penalty: |torso_x| beyond lane_soft costs lane_weight per metre,
@@ -114,6 +121,11 @@ func _physics_process(_delta: float) -> void:
 	# to center (no tight terminal — that was unlearnable) while the cap stops a transient excursion or
 	# physics spike from running the reward away.
 	reward -= lane_weight * minf(maxf(0.0, absf(torso_x) - lane_soft), lane_excess_cap)
+	# Jump-launch shaping (#286): reward upward torso velocity while a solid hurdle is close ahead, so
+	# the creature learns to push up AT the wall. Gated OFF (jump_weight 0) for the perception-only net.
+	if jump_weight > 0.0 and _track != null:
+		var dist: float = _track.dist_to_next_hurdle(torso_local.z)
+		reward += jump_weight * JumpMath.approach_jump_reward(_game.vertical_velocity(), dist, jump_zone, jump_vy_cap)
 	# Clears are only paid IN-LANE: the bonus can't be earned by drifting past the hurdle's edge.
 	if _track != null and absf(torso_x) <= lane_half_width:
 		var cleared: int = _track.count_newly_passed(torso_local.z)

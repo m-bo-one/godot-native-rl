@@ -38,6 +38,31 @@ func _initialize() -> void:
 	track.reset_progress()
 	h.assert_eq(track.count_newly_passed(40.0), 2, "reset re-arms both")
 
+	# --- solid mode + jump distance (#286) ---
+	# Default (perception-only): hurdle bodies are collision_layer 2, mask 0 (byte-identical to #60 M2).
+	var pbody: StaticBody3D = track.get_child(0)
+	h.assert_eq(pbody.collision_layer, 2, "perception-only hurdle on layer 2")
+	h.assert_eq(pbody.collision_mask, 0, "perception-only hurdle mask 0")
+
+	var solid = Track.new()
+	solid.solid = true
+	solid.hurdle_count = 2
+	solid.hurdle_spacing = 10.0
+	solid.start_z = 5.0
+	get_root().add_child(solid)
+	solid.rebuild()
+	var sbody: StaticBody3D = solid.get_child(0)
+	# Solid: layer 3 = bit 1 (creature's default mask 1 collides) + bit 2 (sensor mask 2 still reads).
+	h.assert_eq(sbody.collision_layer, 3, "solid hurdle on layer 3 (creature + sensor)")
+	# dist_to_next_hurdle: first hurdle near-face at z = 5 - depth/2 (depth default 0.3 -> 4.85).
+	h.assert_true(absf(solid.dist_to_next_hurdle(0.0) - 4.85) < 1e-6, "dist to first hurdle near-face")
+	h.assert_true(solid.dist_to_next_hurdle(4.85) <= 0.0, "dist <= 0 at/after the near-face")
+	solid.count_newly_passed(6.0)  # pass the first
+	h.assert_true(absf(solid.dist_to_next_hurdle(6.0) - 8.85) < 1e-6, "dist to SECOND hurdle after passing first")
+	solid.count_newly_passed(40.0)  # pass all
+	h.assert_true(solid.dist_to_next_hurdle(40.0) > 1e8, "no hurdles ahead -> large sentinel")
+	solid.queue_free()
+
 	track.apply_curriculum({"hurdle_count": 4, "hurdle_height": 0.3, "hurdle_spacing": 6.0})
 	h.assert_eq(track.get_child_count(), 4, "curriculum rebuild -> 4 bodies")
 	h.assert_eq(track.zs(), [5.0, 11.0, 17.0, 23.0], "curriculum spacing applied")

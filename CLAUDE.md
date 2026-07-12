@@ -200,6 +200,31 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   SCENE=res://examples/quadruped_walk/quadruped_hurdles_train_parallel.tscn ./scripts/train_quadruped.sh`
   — same trainer, hurdles world (35-dim obs incl. 6 hurdle rays), 3-stage curriculum promotes
   game-side; `OUT=` redirects the save/export stem, `CKPT_DIR=` the snapshot dir.
+  **Solid-hurdle JUMP (#286):** `OUT=models/quadruped_jump
+  SCENE=res://examples/quadruped_walk/quadruped_jump_train_parallel.tscn
+  INIT_FROM=models/quadruped_hurdles.zip ENT_COEF=0.01 ./scripts/train_quadruped.sh` — the #60 M2
+  hurdles were **perception-only** (StaticBody layer 2, `mask=0` — the creature trotted THROUGH
+  them); #286 makes them **physically solid** (`HurdleTrack.solid=true` → collision layer 3: bit 1
+  the creature collides + bit 2 the sensor still reads) so the quadruped must actually **leap** them.
+  Adds jump-launch reward shaping (`jump_weight`, pure `JumpMath.approach_jump_reward` rewards upward
+  torso velocity while a hurdle is close ahead — both **gated off by default so the shipped
+  perception net is byte-identical**) + a low→tall solid curriculum promoting on `success_rate`.
+  Warm-started from the hurdles runner (same 35-dim obs). The **shipped net is v2** (3M steps,
+  warm-started from the v1 jump net, `jump_vy_cap` lowered 3.0→1.5 for a controlled hop instead of a
+  wild over-launch, + a chain→tall→taller→max curriculum ramping to **0.50 m** — the curriculum races
+  to the max stage by ~1.2M steps): it reliably **leaps the first solid wall at ANY height 0.3–0.5 m**
+  (clears a **solid 0.50 m wall** — the top of the target range — and reaches ~15.7 m at 0.30 m), with
+  a cleaner, lower, more level leap (~1.17 m apex at 0.40 m vs v1's 1.5 m nose-dive). Deployed in
+  `quadruped_jump_track.tscn`; behavioral regression at **0.30 m** (`quadruped_jump_trained_scene.tscn`,
+  reliably 15.7 m / 1 clear; regression asserts min 6 m / 1 clear — Jolt is cross-machine
+  nondeterministic, CI's slower physics reaches only ~8.5 m for the same net, so the bound is loose,
+  like the perception-hurdles check). Honest limit: it clears **1** tall wall reliably, **not** a full
+  multi-hurdle 0.3–0.5 m course (the second wall stops it) — reliable multi-hurdle tall leaping stays
+  open on #286. (v1 — the earlier wild-dive net that chained two 0.20 m walls but barely cleared 0.30 m
+  — was superseded.) Deploy pins `action_repeat=4`. Screenshot capture: `quadruped_jump_capture.tscn`
+  under `xvfb`. Training gotcha: a cold torch import + `--init_from` load can exceed `train_quadruped.sh`'s
+  startup `sleep` → Godot falls to HUMAN mode and the trainer's `accept()` times out; bump `STARTUP_DELAY`
+  or launch Godot only after the trainer logs "waiting for remote GODOT connection".
 - **Train IN-ENGINE (ES — no Python, no socket, no backprop):** `godot --headless --path .
   res://examples/chase_the_target/chase_es_train.tscn` — the native ES trainer (#131): `ESTrainer`
   node (drop-in for `NcnnSync`; same agent contract, `action_repeat`/`speed_up`) evolves a flat θ

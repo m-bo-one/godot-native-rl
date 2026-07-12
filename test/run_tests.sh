@@ -106,6 +106,9 @@ echo "== Locomotion race learning-arc check (500k/2.5M/6M generations, headless,
 echo "== Trained quadruped HURDLES behavioral check (headless, #60 M2) =="
 "$GODOT" --headless --path . res://test/integration/quadruped_hurdles_trained_scene.tscn
 
+echo "== Trained quadruped SOLID-hurdle JUMP behavioral check (headless, #286) =="
+"$GODOT" --headless --path . res://test/integration/quadruped_jump_trained_scene.tscn
+
 echo "== Curriculum promotion smoke (headless) =="
 "$GODOT" --headless --path . res://test/integration/curriculum_smoke_scene.tscn
 
