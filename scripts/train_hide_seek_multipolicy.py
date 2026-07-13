@@ -89,6 +89,61 @@ def export_actor_as_torchscript(agent, observation_dim: int, pt_path) -> None:
     write_shape_sidecar(pt_path, shape)
 
 
+def snapshot_updates(total_updates: int, steps_per_update: int, every: int) -> List[int]:
+    """Which (0-based) update indices trigger a mid-run pool snapshot (#189): the update whose
+    cumulative env-steps first crosses each multiple of `every`. Empty when every <= 0 (off)."""
+    if every <= 0 or steps_per_update <= 0:
+        return []
+    out: List[int] = []
+    next_boundary = every
+    for u in range(total_updates):
+        done = (u + 1) * steps_per_update
+        if done >= next_boundary:
+            out.append(u)
+            while next_boundary <= done:
+                next_boundary += every
+    return out
+
+
+def snapshot_name(policy: str, update: int) -> str:
+    """Pool-member name for a mid-run freeze: policy-scoped + zero-padded 1-based update index,
+    so ls order == training order (the league's 'latest' pick_mode relies on registration order,
+    but sortable names keep the pool dir humanly readable)."""
+    return "%s_live_u%06d" % (policy, update + 1)
+
+
+def freeze_snapshot(agent, observation_dim: int, policy: str, update: int, pool_base) -> None:
+    """Freeze one learner's actor into the opponent pool MID-RUN (#189): TorchScript -> ncnn in
+    pool_base/<policy>/ + register in that pool's ELO ledger (pool.json) at the learner rating —
+    the same artifacts the alternating league (#29) produces per phase, so SelfPlayManager /
+    pick_opponent consume this pool unchanged. The .pt intermediates are removed (the pool holds
+    deploy ncnn only)."""
+    import json
+    import pathlib
+
+    import export_to_ncnn
+    import selfplay_phase
+
+    name = snapshot_name(policy, update)
+    pool_dir = pathlib.Path(pool_base) / policy
+    pool_dir.mkdir(parents=True, exist_ok=True)
+    pt_path = pool_dir / f"{name}.pt"
+    export_actor_as_torchscript(agent, observation_dim, pt_path)
+    rc = export_to_ncnn.main([str(pt_path), "--outdir", str(pool_dir)])
+    if rc != 0:
+        raise RuntimeError(f"ncnn conversion failed for snapshot {name} (rc {rc})")
+    pt_path.unlink(missing_ok=True)
+    pathlib.Path(str(pt_path) + ".shape.json").unlink(missing_ok=True)
+
+    ledger_path = pool_dir / "pool.json"
+    ledger = {"members": {}, "learner_rating": selfplay_phase.DEFAULT_RATING}
+    if ledger_path.exists():
+        ledger = json.loads(ledger_path.read_text())
+    ledger = selfplay_phase.register_snapshot(ledger, name)
+    ledger_path.write_text(json.dumps(ledger, indent=2))
+    print(f"[snapshot] froze {name} into {pool_dir} (rating {ledger['members'][name]['rating']})")
+
+
 class MultiPolicyConfig(NamedTuple):
     timesteps: int
     speedup: int
@@ -106,6 +161,8 @@ class MultiPolicyConfig(NamedTuple):
     max_grad_norm: float
     export_dir: str
     policy_names: tuple  # expected names, for a fail-fast sanity check against the wire
+    snapshot_every: int  # env-steps between mid-run pool freezes (#189); 0 = off
+    pool_dir: str
 
 
 def parse_args(argv: Sequence[str] | None = None) -> "MultiPolicyConfig":
@@ -125,6 +182,11 @@ def parse_args(argv: Sequence[str] | None = None) -> "MultiPolicyConfig":
     p.add_argument("--vf_coef", type=float, default=0.5)
     p.add_argument("--max_grad_norm", type=float, default=0.5)
     p.add_argument("--export_dir", type=str, default="models")
+    p.add_argument("--snapshot_every", type=int, default=0,
+                   help="env-steps between mid-run opponent-pool freezes of BOTH live learners "
+                        "(#189 simultaneous self-play); 0 = off")
+    p.add_argument("--pool_dir", type=str, default="models/selfplay_pool",
+                   help="pool base dir (per-policy subdirs; the #29 league layout)")
     a = p.parse_args(argv)
     return MultiPolicyConfig(
         timesteps=a.timesteps, speedup=a.speedup, action_repeat=a.action_repeat, seed=a.seed,
@@ -133,6 +195,7 @@ def parse_args(argv: Sequence[str] | None = None) -> "MultiPolicyConfig":
         clip_coef=a.clip_coef, ent_coef=a.ent_coef, vf_coef=a.vf_coef,
         max_grad_norm=a.max_grad_norm, export_dir=a.export_dir,
         policy_names=("seeker", "hider"),
+        snapshot_every=a.snapshot_every, pool_dir=a.pool_dir,
     )
 
 
@@ -197,6 +260,11 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     updates = tc.num_updates(cfg.timesteps, num_steps, n_agents)
     print(f"running {updates} updates over {n_agents} agents")
+    # #189 simultaneous self-play: cross-freeze BOTH live learners into the opponent pool at
+    # these updates (no phase restarts — the pool grows during the run).
+    freeze_at = set(snapshot_updates(updates, num_steps * n_agents, cfg.snapshot_every))
+    if freeze_at:
+        print(f"mid-run pool snapshots at updates {sorted(u + 1 for u in freeze_at)} -> {cfg.pool_dir}")
 
     next_obs_np, _ = env.reset(cfg.seed)
     next_obs = torch.tensor(np.asarray(next_obs_np, dtype=np.float32), device=device)
@@ -281,6 +349,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         msg = " ".join(f"{name}_rew={float(bufs[name]['rewards'].mean()):.3f}" for name in index_map)
         print(f"update {update + 1}/{updates} {msg}")
+
+        if update in freeze_at:
+            for name in index_map:
+                freeze_snapshot(agents[name], observation_dim, name, update, cfg.pool_dir)
 
     # Export each policy's actor to TorchScript (+ shape sidecar) for the ncnn pipeline.
     # TorchScript (not ONNX) so the export stays in the numpy<2 world stable-baselines3 needs.

@@ -56,11 +56,38 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(cfg.timesteps, 800_000)
         self.assertEqual(cfg.export_dir, "models")
         self.assertEqual(cfg.policy_names, ("seeker", "hider"))
+        self.assertEqual(cfg.snapshot_every, 0)   # off by default (#189)
+        self.assertEqual(cfg.pool_dir, "models/selfplay_pool")
 
     def test_overrides(self):
-        cfg = mp.parse_args(["--timesteps", "1234", "--speedup", "4"])
+        cfg = mp.parse_args(["--timesteps", "1234", "--speedup", "4",
+                             "--snapshot_every", "5000", "--pool_dir", "/tmp/pool"])
         self.assertEqual(cfg.timesteps, 1234)
         self.assertEqual(cfg.speedup, 4)
+        self.assertEqual(cfg.snapshot_every, 5000)
+        self.assertEqual(cfg.pool_dir, "/tmp/pool")
+
+
+# #189: simultaneous two-sided self-play — mid-run cross-freezing into the opponent pool.
+class TestSnapshotSchedule(unittest.TestCase):
+    def test_boundaries_every_n_env_steps(self):
+        # 10 updates x 512 env-steps each; every 1000 -> after updates 1, 3, 5, 7, 9
+        # (0-based: the update whose cumulative steps first crosses each multiple of 1000).
+        self.assertEqual(mp.snapshot_updates(10, 512, 1000), [1, 3, 5, 7, 9])
+
+    def test_exact_multiples(self):
+        self.assertEqual(mp.snapshot_updates(4, 500, 1000), [1, 3])
+
+    def test_off_when_zero_or_negative(self):
+        self.assertEqual(mp.snapshot_updates(10, 512, 0), [])
+        self.assertEqual(mp.snapshot_updates(10, 512, -5), [])
+
+    def test_every_larger_than_run_is_empty(self):
+        self.assertEqual(mp.snapshot_updates(3, 100, 10_000), [])
+
+    def test_snapshot_name_is_sortable_and_policy_scoped(self):
+        self.assertEqual(mp.snapshot_name("seeker", 7), "seeker_live_u000008")
+        self.assertEqual(mp.snapshot_name("hider", 99), "hider_live_u000100")
 
 
 if __name__ == "__main__":

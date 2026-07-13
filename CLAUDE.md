@@ -108,7 +108,12 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   `PHASES`/`TIMESTEPS_PER_PHASE`/`SPEEDUP`/`ACTION_REPEAT` overrides. Library:
   `training/{elo,opponent_pool,self_play_manager}.gd` + `reload_model()` on both controllers.
 - **Train (hide & seek, two distinct policies):** `./scripts/train_hide_seek_multipolicy.sh` — custom
-  single-file multi-policy PPO; seeker + hider learn separate networks. Distinct policy identity is
+  single-file multi-policy PPO; seeker + hider learn separate networks.
+  **Simultaneous self-play (#189):** `SNAPSHOT_EVERY=<env-steps> [POOL_DIR=models/selfplay_pool]`
+  cross-freezes BOTH live learners into the opponent pool mid-run (TorchScript→ncnn snapshot +
+  `pool.json` ELO-ledger registration per policy — the exact #29 league layout, so
+  `SelfPlayManager`/`pick_opponent` consume it unchanged): the pool grows DURING one run, no
+  alternating-phase restarts. Default 0 = off (existing behavior untouched). Distinct policy identity is
   scene-driven (#73): each agent bakes a `policy_group` (`seeker`/`hider`) in `hide_seek_world.tscn`,
   honored only when the training scene's Sync sets `multi_policy=true` (the *same* world scene stays
   reusable by the shared-policy example, where the flag is off) — no `--multi-policy` cmdline gate.
