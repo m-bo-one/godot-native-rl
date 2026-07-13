@@ -1,0 +1,5 @@
+# Opt-in add-on for the RecurrentPPO (PPO-LSTM) trainer (#378): install into .venv-train.
+#   .venv-train/bin/pip install -r requirements-recurrent.txt
+# Version tracks the stable_baselines3 pin in requirements-train.txt (sb3-contrib releases
+# pair 1:1 with SB3 minor versions).
+sb3-contrib==2.8.0
