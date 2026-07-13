@@ -95,6 +95,24 @@ class TestGodotParallelEnv(unittest.TestCase):
         self.assertFalse(term[0])
         self.assertFalse(trunc[1])
 
+    def test_truncations_flow_through_per_agent(self):
+        # #12: the adapter surfaces the underlying env's REAL truncation flags per agent
+        # (TruncationAwareGodotEnv supplies them from the wire; the stub injects them here).
+        stub = StubGodotEnv()
+        real_step = stub.step
+
+        def step_with_trunc(actions, order_ij=True):
+            obs, rewards, dones, truncations, infos = real_step(actions, order_ij)
+            return obs, rewards, [True, False], [True, False], infos
+
+        stub.step = step_with_trunc
+        env = GodotParallelEnv(godot_env=stub)
+        env.reset()
+        _obs, _rew, term, trunc, _infos = env.step({0: np.array([1]), 1: np.array([2])})
+        self.assertTrue(trunc[0])
+        self.assertFalse(trunc[1])
+        self.assertTrue(term[0])
+
     def test_missing_agent_gets_zero_action_filled(self):
         stub = StubGodotEnv()
         env = GodotParallelEnv(godot_env=stub)

@@ -23,8 +23,11 @@ func build_env_info_message() -> Dictionary:
 		"agent_policy_names": PolicyNames.policy_names_from_agents(agents_training, multi_policy),
 	}
 
-func build_step_message(obs: Array, reward: Array, done: Array, info: Array) -> Dictionary:
-	return {"type": "step", "obs": obs, "reward": reward, "done": done, "info": info}
+func build_step_message(obs: Array, reward: Array, done: Array, truncated: Array, info: Array) -> Dictionary:
+	# `truncated` is ADDITIVE (#12): stock godot_rl 0.8.2 reads only obs/reward/done/info and
+	# ignores unknown keys, so `done` keeps meaning terminated-OR-truncated on the old wire while
+	# truncation-aware trainers (our PettingZoo/RLlib adapters) get the real Gymnasium split.
+	return {"type": "step", "obs": obs, "reward": reward, "done": done, "truncated": truncated, "info": info}
 
 func build_reset_message(obs: Array) -> Dictionary:
 	return {"type": "reset", "obs": obs}
@@ -237,11 +240,12 @@ func _training_process() -> void:
 	if need_to_send_obs:
 		need_to_send_obs = false
 		var reward_arr := _get_reward_from_agents()
+		var truncated_arr := _get_truncated_from_agents()  # read BEFORE done clears the pair (#12)
 		var done_arr := _get_done_from_agents()
 		var obs := _get_obs_from_agents(agents_training)
 		var info_arr := _get_info_from_agents()
 		var t_obs_done := Time.get_ticks_usec()
-		_send_dict_as_json_message(build_step_message(obs, reward_arr, done_arr, info_arr))
+		_send_dict_as_json_message(build_step_message(obs, reward_arr, done_arr, truncated_arr, info_arr))
 		step_sent.emit(reward_arr, done_arr)
 		var t_sent := Time.get_ticks_usec()
 		did_send = true
@@ -419,6 +423,14 @@ func _get_reward_from_agents() -> Array:
 		rewards.append(agent.get_reward())
 		agent.zero_reward()
 	return rewards
+
+# Must run before _get_done_from_agents in a step: set_done_false() clears BOTH flags.
+func _get_truncated_from_agents() -> Array:
+	var truncs := []
+	for agent in agents_training:
+		# Defensive duck-typing: custom controllers that predate #12 simply report false.
+		truncs.append(agent.get_truncated() if agent.has_method("get_truncated") else false)
+	return truncs
 
 func _get_done_from_agents() -> Array:
 	var dones := []

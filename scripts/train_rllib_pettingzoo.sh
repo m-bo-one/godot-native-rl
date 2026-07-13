@@ -44,9 +44,22 @@ echo "Starting RLlib multi-policy trainer (timesteps=$TIMESTEPS, base_port=$BASE
 	--experiment "$EXPERIMENT" --train_dir "$TRAIN_DIR" &
 TRAINER_PID=$!
 
-# Give ray + the env server time to come up before the Godot client connects (ray.init plus
-# the Algorithm build take ~15-20 s; GodotEnv retries are not part of the wire protocol).
-sleep "${STARTUP_DELAY:-20}"
+# Race-free startup (the #286 gotcha class): wait until the trainer has actually BOUND the env
+# port before launching Godot — a blind sleep loses whenever ray/torch cold-start exceeds it,
+# and Godot's connect window (10s) then falls back to HUMAN mode while accept() starves.
+# Listen-check WITHOUT connecting (a probe connect would consume the trainer's accept()):
+# lsof works on macOS + Linux; fall back to ss where lsof is absent.
+port_listening() {
+	if command -v lsof >/dev/null 2>&1; then
+		lsof -iTCP:"$BASE_PORT" -sTCP:LISTEN >/dev/null 2>&1
+	else
+		ss -ltn 2>/dev/null | grep -q ":$BASE_PORT "
+	fi
+}
+for _ in $(seq 1 180); do
+	port_listening && break
+	sleep 1
+done
 
 echo "Launching headless Godot multi-policy scene ($SCENE)..."
 "$GODOT" --headless --path . "$SCENE" \

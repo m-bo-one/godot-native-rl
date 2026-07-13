@@ -303,6 +303,9 @@ func get_done() -> bool:
 func set_done_false() -> void:
 	_core.set_done_false()
 
+func get_truncated() -> bool:
+	return _core.get_truncated()
+
 func zero_reward() -> void:
 	_core.zero_reward()
 

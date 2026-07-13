@@ -8,7 +8,8 @@ func _initialize() -> void:
 	var h := Harness.new()
 	var s := SyncScript.new()
 
-	var step = s.build_step_message([[0.1]], [1.0], [false], [{"is_success": true}])
+	var step = s.build_step_message([[0.1]], [1.0], [false], [false], [{"is_success": true}])
+	h.assert_eq(step["truncated"], [false], "step message carries the additive truncated array (#12)")
 	h.assert_eq(step["type"], "step", "step type")
 	h.assert_eq(step["reward"], [1.0], "step reward")
 	h.assert_eq(step["done"], [false], "step done")

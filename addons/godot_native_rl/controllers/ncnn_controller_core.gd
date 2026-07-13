@@ -10,6 +10,10 @@ const ObsNormalize = preload("res://addons/godot_native_rl/controllers/obs_norma
 const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurrent_state.gd")
 
 var done: bool = false
+# Gymnasium terminated/truncated split (#12): true when the episode ended by the reset_after
+# HORIZON (a truncation), false when the agent set `done` for a task-terminal state. Additive:
+# `done` stays = terminated OR truncated, so the godot_rl 0.8.2 wire semantics are unchanged.
+var truncated: bool = false
 var reward: float = 0.0
 var n_steps: int = 0
 var needs_reset: bool = false
@@ -50,6 +54,7 @@ func setup_rng(seed_value: int) -> void:
 func step(reset_after: int) -> void:
 	n_steps += 1
 	if n_steps > reset_after:
+		truncated = true  # horizon end, not a task-terminal state (#12)
 		# Signal episode termination (godot_rl convention): the trainer reads `done`,
 		# which gives proper episode boundaries and reward statistics.
 		needs_reset = true
@@ -58,6 +63,7 @@ func step(reset_after: int) -> void:
 func reset() -> void:
 	n_steps = 0
 	needs_reset = false
+	truncated = false
 	init_recurrent_state()  # recurrent policies must not carry memory across episodes
 
 func reset_if_done() -> void:
@@ -68,10 +74,17 @@ func zero_reward() -> void:
 	reward = 0.0
 
 func set_done_false() -> void:
+	# Paired read-and-clear with get_done()/get_truncated(): the sync clears both after
+	# emitting a step, so a stale truncation can never leak into the next episode's flags.
 	done = false
+	truncated = false
 
 func get_done() -> bool:
 	return done
+
+
+func get_truncated() -> bool:
+	return truncated
 
 func set_heuristic(h: String) -> void:
 	heuristic = h

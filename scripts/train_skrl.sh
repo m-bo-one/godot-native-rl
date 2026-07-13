@@ -39,8 +39,22 @@ echo "Starting SKRL trainer (timesteps=$TIMESTEPS, base_port=$BASE_PORT)..."
 	--out "$PT_PATH" &
 TRAINER_PID=$!
 
-# torch + skrl import take a few seconds before the env server opens.
-sleep "${STARTUP_DELAY:-10}"
+# Race-free startup (the #286 gotcha class): wait until the trainer has actually BOUND the env
+# port before launching Godot — a blind sleep loses whenever ray/torch cold-start exceeds it,
+# and Godot's connect window (10s) then falls back to HUMAN mode while accept() starves.
+# Listen-check WITHOUT connecting (a probe connect would consume the trainer's accept()):
+# lsof works on macOS + Linux; fall back to ss where lsof is absent.
+port_listening() {
+	if command -v lsof >/dev/null 2>&1; then
+		lsof -iTCP:"$BASE_PORT" -sTCP:LISTEN >/dev/null 2>&1
+	else
+		ss -ltn 2>/dev/null | grep -q ":$BASE_PORT "
+	fi
+}
+for _ in $(seq 1 180); do
+	port_listening && break
+	sleep 1
+done
 
 echo "Launching headless Godot training scene..."
 "$GODOT" --headless --path . "$SCENE" \
