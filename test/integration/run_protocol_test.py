@@ -98,13 +98,16 @@ def main():
         step = recv(conn)
         if step.get("type") != "step":
             failures.append("step type (got %r)" % step.get("type"))
-        for k in ("obs", "reward", "done"):
+        for k in ("obs", "reward", "done", "truncated"):
             if k not in step:
                 failures.append("step missing %s" % k)
         if len(step.get("reward", [])) != 1:
             failures.append("reward len != 1")
         if len(step.get("done", [])) != 1:
             failures.append("done len != 1")
+        # Additive terminated/truncated split (#12): a normal mid-episode step is neither.
+        if step.get("truncated") != [False]:
+            failures.append("truncated != [false] on a normal step (got %r)" % step.get("truncated"))
         info = step.get("info")
         if not isinstance(info, list) or len(info) != 1:
             failures.append("info not a 1-element list (got %r)" % info)

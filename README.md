@@ -142,7 +142,10 @@ for kinematic/seedable envs. Corrected experiment + numbers in the ES spec.
   initial-state snapshot — zero agent changes), then replay them deterministically in Godot
   (`chase_replay.tscn`). Exact for kinematic seeded games; approximate for physics envs (Jolt is
   not cross-run deterministic). Foundation for record-to-video (#40).
-- godot_rl v0.8.2-compatible training bridge (`NcnnSync`) incl. multi-policy + parallel arenas.
+- godot_rl v0.8.2-compatible training bridge (`NcnnSync`) incl. multi-policy + parallel arenas
+  (verified against upstream godot_rl_agents through commit `207b6f4`, 2026-06-13; 0.8.2 is the
+  latest PyPI release). The wire additionally carries a Gymnasium `terminated`/`truncated`
+  split (additive `truncated` field, #12) consumed by our PettingZoo/RLlib adapters.
   Training backends: SB3 (`train_chase.sh`), CleanRL (`train_cleanrl.sh`), SampleFactory async PPO
   (`train_sf.sh`, isolated `.venv-sf`, exports via TorchScript→ncnn), Ray/RLlib new-API-stack PPO
   (`train_rllib.sh`, shares `.venv-train` — stock RLlib trains against an unmodified env over the

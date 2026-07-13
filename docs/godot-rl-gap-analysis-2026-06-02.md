@@ -3,7 +3,7 @@
 **Date:** 2026-06-02 · **status refreshed 2026-06-09**  
 **Repos audited:** `edbeeching/godot_rl_agents` · `edbeeching/godot_rl_agents_plugin` · `edbeeching/godot_rl_agents_examples`  
 **This repo state:** backlog items 1–8, 10–13, 17–18, 20–22, 24–25, 30, 33, 36, 39–47, 49 done;
-item 9 partial (terminated/truncated blocked upstream). GitHub #45, #64, #74, #79, #81, #111 also closed.
+item 9 complete (terminated/truncated shipped additively 2026-07-13, #12). GitHub #45, #64, #74, #79, #81, #111 also closed.
 Open gaps tracked as GitHub issues (see table below).
 (2026-06-03 refresh: GridSensor + ISensor interface shipped; `INHERIT_FROM_SYNC` already wired;
 `policy_name`/`agent_policy_names` wire field shipped — RLlib/PettingZoo *trainers* now unblocked,
@@ -177,7 +177,7 @@ C++ runner (needs a `PIXEL_GRAY` path in `NcnnRunner`).
 | Training bridge (protocol v0.7) | ✅ | ✅ | — |
 | `agent_policy_names` in env_info | ✅ | ✅ always emitted (one entry per training agent, obs order) | ✅ done (item 20) |
 | `call()` remote method invocation | ✅ Python can invoke arbitrary Godot methods | ✅ handled in `NcnnSync` | — |
-| `terminated`/`truncated` split | ❌ TODO both sides | ❌ | Parity (#12) |
+| `terminated`/`truncated` split | ❌ TODO upstream (`godot_env.py`, still on main @207b6f4) | ✅ done our side (#12) — additive `truncated` wire field + `TruncationAwareGodotEnv` consumer in our PettingZoo/RLlib adapters; stock godot_rl unchanged | Ahead of upstream |
 | Connect / read timeouts | ❌ | ✅ | **Advantage** |
 | Per-agent `info` field | ❌ | ✅ | **Advantage** |
 | `deterministic_inference` export on Sync | ✅ | ✅ on `NcnnAIController2D/3D` (per-agent) | ✅ done (#16) |
@@ -273,5 +273,5 @@ C++ runner (needs a `PIXEL_GRAY` path in `NcnnRunner`).
 | ✅ Done | Optuna hyperparameter-tuning example — `tune_optuna.sh`/`.py`, PPO study maximizing `ep_rew_mean`, per-trial Godot client, isolated `optuna` dep, unit-tested helpers | #113 |
 | ⚪ P4 | CameraSensor: configurable render res + downscale + RGBA | #36 |
 | ⚪ P4 | Grayscale camera deploy (C++ `PIXEL_GRAY` path) | #36 |
-| 🔴 P5 | `terminated`/`truncated` split — wire semantics change; blocked on upstream godot_rl TODO | #12 |
+| ✅ Done | `terminated`/`truncated` split — implemented ADDITIVELY (no wire semantics change: `done` stays term-OR-trunc for stock godot_rl; our adapters consume the real split) | #12 |
 | 🔵 By design | `ONNX_INFERENCE` mode — replaced by ncnn | — |

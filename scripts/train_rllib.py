@@ -101,7 +101,8 @@ def make_godot_env_cls():
     """
     import gymnasium as gym
     import numpy as np
-    from godot_rl.core.godot_env import GodotEnv
+
+    from godot_env_truncation import TruncationAwareGodotEnv
 
     class GodotRLlibEnv(gym.Env):
         """Single-agent gymnasium adapter over godot_rl's GodotEnv for RLlib's new API stack.
@@ -113,7 +114,8 @@ def make_godot_env_cls():
 
         def __init__(self, config=None):
             env_config = dict(config or {})
-            self._env = GodotEnv(
+            # Truncation-aware (#12): step()'s (term, trunc) below are the real Gymnasium split.
+            self._env = TruncationAwareGodotEnv(
                 env_path=None,
                 port=int(env_config.get("base_port", 11008)),
                 show_window=False,

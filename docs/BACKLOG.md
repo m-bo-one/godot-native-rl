@@ -160,8 +160,16 @@ the same change. New items → GitHub issue only.
    env_info box space + step hex decodes to exact bytes). Full suite green from a clean cache.
    **Deferred (new items 36–38 below):** deploy-side image inference glue, trained CNN example,
    in-editor real-render verification.
-9. 🔄 **Protocol v0.8 upgrades** — `terminated`/`truncated` split (CORRECTNESS), per-agent `info`
+9. ✅ **Protocol v0.8 upgrades** — `terminated`/`truncated` split (CORRECTNESS), per-agent `info`
    field, hex camera-obs encoding, socket connect/read timeout. *(novel-addons spec §2)*
+   - **Done 2026-07-13 (terminated/truncated split #12):** implemented ADDITIVELY — the step
+     message gains a `truncated` array (`NcnnControllerCore.truncated`: set by the `reset_after`
+     horizon, NOT by agent-set task terminals; `done` stays = term OR trunc so stock godot_rl
+     0.8.2 is byte-compatible). Consumed by OUR adapters via
+     `scripts/godot_env_truncation.TruncationAwareGodotEnv` (PettingZoo `GodotParallelEnv`,
+     RLlib `GodotRLlibEnv`). Upstream godot_rl still collapses both into `done`
+     (`godot_env.py` TODO, unchanged through main @207b6f4 2026-06-13, no upstream PR) — when it
+     lands there, the stock SB3/CleanRL paths get the split for free from our wire.
    - **Done 2026-06-01 (socket timeout #4 + info field #2):** spec
      `docs/superpowers/specs/2026-06-01-socket-timeout-and-info-field-design.md`, plan
      `docs/superpowers/plans/2026-06-01-socket-timeout-and-info-field.md`. Added a pure

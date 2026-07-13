@@ -53,6 +53,25 @@ func _initialize() -> void:
 	c.set_done_false()
 	h.assert_true(not c.get_done(), "set_done_false clears done")
 
+	# --- terminated/truncated split (#12): a horizon end is TRUNCATION; agent-terminal is not ---
+	var ct = NcnnControllerCore.new()
+	ct.step(1)
+	h.assert_true(not ct.get_truncated(), "not truncated before horizon")
+	ct.step(1)  # n_steps = 2 > reset_after = 1
+	h.assert_true(ct.get_truncated(), "horizon end sets truncated")
+	h.assert_true(ct.get_done(), "horizon end still sets done (0.8.2 wire semantics unchanged)")
+	ct.set_done_false()
+	h.assert_true(not ct.get_truncated(), "set_done_false clears truncated (read-and-clear pairing)")
+	ct.done = true  # agent-set task terminal
+	h.assert_true(ct.get_done(), "agent terminal sets done")
+	h.assert_true(not ct.get_truncated(), "agent terminal is NOT truncated")
+	ct.set_done_false()
+	ct.step(1)
+	ct.step(1)
+	h.assert_true(ct.get_truncated(), "truncated set again on next horizon")
+	ct.reset()
+	h.assert_true(not ct.get_truncated(), "reset clears truncated")
+
 	# heuristic
 	c.set_heuristic("noop")
 	h.assert_eq(c.heuristic, "noop", "set_heuristic stores value")

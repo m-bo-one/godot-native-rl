@@ -7,8 +7,9 @@ maps to a policy via `agent_policy_names` (emitted on the wire since 2026-06-03)
 
 Fixed-population semantics (matches godot_rl + upstream GDRLPettingZooEnv): every agent is present
 every step; an agent whose episode has finished receives a zero action until all agents are done.
-`truncations` is reported False — the installed godot_rl v0.8.2 collapses terminated/truncated into
-`done` (protocol #12 tracks the split); this adapter is structured to add it once the protocol lands.
+`terminations`/`truncations` are the REAL Gymnasium split since #12: the wire carries an additive
+`truncated` field and the env is built over TruncationAwareGodotEnv (godot_env_truncation.py),
+which splits it out (stock godot_rl 0.8.2 still sees plain `done` — unchanged).
 
 Design: docs/superpowers/specs/2026-06-09-pettingzoo-multipolicy-interop-design.md
 
@@ -40,14 +41,17 @@ class GodotParallelEnv(ParallelEnv):
         if godot_env is not None:
             self.godot_env = godot_env
         else:
+            # Truncation-aware subclass (#12): step() yields the real (terminated, truncated)
+            # split from the wire's additive field instead of upstream's done-duplication.
             from godot_rl.core.godot_env import GodotEnv
+            from godot_env_truncation import TruncationAwareGodotEnv
 
             if port is None:
                 port = GodotEnv.DEFAULT_PORT
             reserved = {"env_path", "show_window", "action_repeat", "speedup", "seed", "port"}
             # Forward any non-reserved config keys to GodotEnv as kwargs (reserved keys are passed explicitly above/below).
             extra = {k: v for k, v in config.items() if k not in reserved}
-            self.godot_env = GodotEnv(
+            self.godot_env = TruncationAwareGodotEnv(
                 env_path=config.get("env_path"),
                 show_window=show_window,
                 action_repeat=config.get("action_repeat", 1),
@@ -103,7 +107,7 @@ class GodotParallelEnv(ParallelEnv):
 
     def step(self, actions):
         # Fixed-population: self.agents is NOT pruned on per-agent termination (godot_rl keeps every
-        # agent every step; done agents get zero actions). Terminated/truncated split tracked in #12.
+        # agent every step; done agents get zero actions).
         godot_actions = [
             actions[agent] if agent in actions else self._zero_actions[agent]
             for agent in self.possible_agents
@@ -114,6 +118,8 @@ class GodotParallelEnv(ParallelEnv):
         observations = {agent: godot_obs[i] for i, agent in enumerate(self.possible_agents) if agent in actions}
         rewards = {agent: godot_rewards[i] for i, agent in enumerate(self.possible_agents) if agent in actions}
         terminations = {agent: bool(godot_dones[i]) for i, agent in enumerate(self.possible_agents) if agent in actions}
-        truncations = {agent: False for agent in self.possible_agents if agent in actions}
+        # Real per-agent truncations (#12). With an injected plain GodotEnv (or a pre-#12 scene)
+        # slot 4 duplicates `done`; TruncationAwareGodotEnv makes it the true Gymnasium flag.
+        truncations = {agent: bool(godot_truncations[i]) for i, agent in enumerate(self.possible_agents) if agent in actions}
         infos = {agent: godot_infos[i] for i, agent in enumerate(self.possible_agents) if agent in actions}
         return observations, rewards, terminations, truncations, infos
