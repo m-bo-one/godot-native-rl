@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://examples/ball_chase/ball_chase_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/ball_chase/ball_chase_agent.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="4"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/fit_camera_2d.gd" id="fitcam2d"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_fx.gd" id="fx"]
 
 [node name="BallChaseGame" type="Node2D"]
 script = ExtResource("1")
@@ -22,6 +23,11 @@ game_path = NodePath("..")
 control_mode = 3
 model_param_path = "res://examples/ball_chase/models/ball_chase_sac.ncnn.param"
 model_bin_path = "res://examples/ball_chase/models/ball_chase_sac.ncnn.bin"
+
+[node name="BallChaseFX" type="Node2D" parent="."]
+script = ExtResource("fx")
+game_path = NodePath("..")
+trail_color = Color(0.25, 0.85, 0.95, 1)
 
 [node name="Sync" type="Node" parent="."]
 script = ExtResource("3")
