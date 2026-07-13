@@ -48,6 +48,17 @@ def stats_from_vecnormalize(vn: Any) -> dict:
     }
 
 
+def resolve_out_path(pkl_path: Path, out: str | None, stem: str | None) -> Path:
+    """Where the stats JSON goes: an explicit --out wins; --stem writes the stem-coupled
+    `<stem>_vecnorm.json` (#363 — the name hf_hub.collect_model_files ships alongside the net);
+    default is `<pkl-stem>.json` beside the pkl (the original behavior)."""
+    if out:
+        return Path(out)
+    if stem:
+        return Path(str(stem) + "_vecnorm.json")
+    return pkl_path.with_suffix(".json")
+
+
 def write_stats_json(stats: dict, path: Path) -> None:
     path.write_text(json.dumps(stats, indent=2) + "\n")
 
@@ -61,13 +72,16 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Export SB3 VecNormalize obs stats to JSON.")
     p.add_argument("pkl", help="path to vec_normalize.pkl")
     p.add_argument("--out", default=None, help="output JSON path (default: <pkl-stem>.json beside the pkl)")
+    p.add_argument("--stem", default=None,
+                   help="model stem (e.g. examples/rover_3d/models/rover): write the stem-coupled "
+                        "<stem>_vecnorm.json that scripts/hf_hub.py ships alongside the net (#363)")
     a = p.parse_args(argv)
 
     pkl_path = Path(a.pkl)
     if not pkl_path.is_file():
         print(f"ERROR: pkl not found: {a.pkl}", file=sys.stderr)
         return 1
-    out_path = Path(a.out) if a.out else pkl_path.with_suffix(".json")
+    out_path = resolve_out_path(pkl_path, a.out, a.stem)
 
     try:
         vn = load_vecnormalize(pkl_path)

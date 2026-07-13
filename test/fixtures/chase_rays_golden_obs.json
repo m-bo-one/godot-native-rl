@@ -1,0 +1,101 @@
+{
+ "_comment": "chase_rays (#364) golden ray obs: analytic slab-method closenesses at fixed agent positions. Python asserts EXACT reproduction; the GDScript test asserts the real physics RaycastSensor2D matches within 2e-3. Layout/ray params in chase_rays_twin_env.py and chase_rays_game.gd must stay in sync with this file.",
+ "cases": [
+  {
+   "agent": [
+    100.0,
+    200.0
+   ],
+   "rays": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "agent": [
+    500.0,
+    300.0
+   ],
+   "rays": [
+    0.4588038998538031,
+    0.0,
+    0.0,
+    0.4588038998538031,
+    0.4588038998538031,
+    0.0,
+    0.0,
+    0.4588038998538031
+   ]
+  },
+  {
+   "agent": [
+    300.0,
+    300.0
+   ],
+   "rays": [
+    0.0,
+    0.8196012999512676,
+    0.8196012999512676,
+    0.0,
+    0.0,
+    0.8196012999512676,
+    0.8196012999512676,
+    0.0
+   ]
+  },
+  {
+   "agent": [
+    240.0,
+    140.0
+   ],
+   "rays": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.9128958023415749,
+    0.912895802341575,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "agent": [
+    900.0,
+    500.0
+   ],
+   "rays": [
+    0.4588038998538031,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "agent": [
+    500.0,
+    200.0
+   ],
+   "rays": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  }
+ ]
+}

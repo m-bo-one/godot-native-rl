@@ -1,0 +1,8 @@
+# SKRL training backend — OPTIONAL skrl add-on for .venv-train (issue #25).
+# Like the ray add-on (requirements-rllib.txt, #126): the base stack (requirements-train.txt,
+# gymnasium 1.2.2 + torch 2.12 + numpy>=2) satisfies skrl's runtime deps, so skrl installs
+# cleanly on top. setup_training.sh installs this into .venv-train; CI omits it (keeps the
+# cached venv small) and the SKRL smoke skips when skrl is absent.
+# Pinned minor: train_skrl.py is coupled to the 2.1 API (PPO_CFG dataclass; positional
+# Model.compute role arg — see the module docstring).
+skrl==2.1.*

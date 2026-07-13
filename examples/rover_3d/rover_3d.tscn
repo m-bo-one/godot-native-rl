@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://examples/rover_3d/rover_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/rover_3d/rover_agent.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="4"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="6"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
 
 [sub_resource type="BoxShape3D" id="Box"]
 size = Vector3(4, 2, 4)
@@ -149,3 +150,7 @@ control_mode = 2
 
 [node name="PolicyDebugOverlay" type="CanvasLayer" parent="."]
 script = ExtResource("5")
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("BLUE box = rover (RL agent)", "GREEN pillar = goal   ORANGE boxes = obstacles")

@@ -17,6 +17,19 @@ extends Node3D
 var _platform: Node3D
 var _ball: RigidBody3D
 var _rng := RandomNumberGenerator.new()
+# Cosmetic demo counters (#229): read by ball_balance_hud.gd in the play scene. Never part of
+# obs/reward — training behavior is untouched.
+var balance_frames := 0
+var best_balance_frames := 0
+var resets := -1  # _ready's initial reset_episode() isn't a fall
+
+func _physics_process(_delta: float) -> void:
+	balance_frames += 1
+	best_balance_frames = maxi(best_balance_frames, balance_frames)
+
+# Cosmetic camera pivot for the drop-in OrbitCamera (#265): orbit around the platform center.
+func get_camera_pivot() -> Vector3:
+	return (_platform.global_position if _platform != null else Vector3.ZERO) + Vector3(0, 0.8, 0)
 
 func _ready() -> void:
 	_platform = get_node_or_null(platform_path)
@@ -65,6 +78,8 @@ func get_obs_array() -> Array:
 	return assemble_obs(platform_tilt(), relative_ball_pos(), ball_velocity())
 
 func reset_episode() -> void:
+	balance_frames = 0
+	resets += 1
 	if _platform != null:
 		_platform.rotation = Vector3.ZERO
 	if _ball != null:

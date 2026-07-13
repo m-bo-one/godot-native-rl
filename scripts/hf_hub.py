@@ -2,8 +2,8 @@
 """Push/pull trained ncnn deploy models to the Hugging Face Hub (#31, backlog item 50).
 
 One command to share a trained ncnn model — the deploy artifacts (`*.ncnn.param` / `*.ncnn.bin` +
-the stem-coupled sidecars `*.recurrent.json` / `*_action_dist.json`) plus an auto-generated model
-card — or to fetch a pretrained one back:
+the stem-coupled sidecars `*.recurrent.json` / `*_action_dist.json` / `*_vecnorm.json`, #363) plus
+an auto-generated model card — or to fetch a pretrained one back:
 
     .venv-train/bin/python scripts/hf_hub.py push examples/chase_the_target/models/chase_the_target org/chase-agent
     .venv-train/bin/python scripts/hf_hub.py pull org/chase-agent examples/chase_the_target/models
@@ -27,12 +27,15 @@ import tempfile
 from pathlib import Path
 
 # Stem-coupled deploy artifacts. A model is identified by its `.ncnn.param`/`.ncnn.bin` PAIR; the
-# JSON sidecars ride alongside when present. `*_golden.json` (a test fixture) and the non-stem-coupled
-# VecNormalize stats JSON (loaded via an explicit controller path) are deliberately NOT collected.
-DEPLOY_SUFFIXES = (".ncnn.param", ".ncnn.bin", ".recurrent.json", "_action_dist.json")
+# JSON sidecars ride alongside when present. `*_golden.json` (a test fixture) is deliberately NOT
+# collected. `_vecnorm.json` (#363) is the stem-coupled VecNormalize obs-norm stats convention:
+# `export_vecnormalize.py --stem <model-stem>` writes it, so a VecNormalize-trained policy ships
+# WITH the stats it needs (deploying without them produces wrong actions silently).
+DEPLOY_SUFFIXES = (".ncnn.param", ".ncnn.bin", ".recurrent.json", "_action_dist.json", "_vecnorm.json")
 
 # What `pull` fetches from a model repo (artifacts + the card), skipping anything else in the repo.
-PULL_PATTERNS = ["*.ncnn.param", "*.ncnn.bin", "*.recurrent.json", "*_action_dist.json", "*.md"]
+PULL_PATTERNS = ["*.ncnn.param", "*.ncnn.bin", "*.recurrent.json", "*_action_dist.json",
+                 "*_vecnorm.json", "*.md"]
 
 CARD_TAGS = (
     "godot",
@@ -87,6 +90,16 @@ def build_model_card(repo_id: str, files, *, base_model: str | None = None) -> s
         front.append("base_model: %s" % base_model)
     front.append("---")
     file_list = "\n".join("- `%s`" % n for n in sorted(p.name for p in files))
+    vecnorm_hint = ""
+    vecnorms = sorted(p.name for p in files if p.name.endswith("_vecnorm.json"))
+    if vecnorms:
+        vecnorm_hint = (
+            "\n## Observation normalization (required)\n\n"
+            "This policy was trained with SB3 `VecNormalize` — set the controller's\n"
+            "`obs_norm_stats_path` to the bundled stats so the obs mean/std is replayed game-side\n"
+            "before inference (without it the policy produces wrong actions silently):\n\n"
+            + "\n".join("    obs_norm_stats_path = \"res://<your_models_dir>/%s\"" % n for n in vecnorms)
+            + "\n")
     body = f"""
 # {repo_id}
 
@@ -103,6 +116,7 @@ no Python or managed runtime at deploy (web, mobile, console, desktop, edge).
 Copy the `.ncnn.param` / `.ncnn.bin` (and any sidecars) into your project and point an
 `NcnnAIController2D` / `NcnnAIController3D` (or `NcnnRunner`) at them — see the
 [deploy guide](https://github.com/minigraphx/godot-native-rl/blob/main/docs/dev/DEVELOPMENT.md).
+{vecnorm_hint}
 
     .venv-train/bin/python scripts/hf_hub.py pull {repo_id} <local_models_dir>
 """

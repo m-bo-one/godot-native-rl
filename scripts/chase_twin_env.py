@@ -105,6 +105,14 @@ if _HAVE_GYM:
             return np.array([self.np_random.uniform(0.0, ARENA_W),
                              self.np_random.uniform(0.0, ARENA_H)])
 
+        # Subclass hooks (#364): variants override HOW the agent moves and WHAT the obs is
+        # without copying the transfer-critical sub-frame reward/rebase machinery in step().
+        def _move(self, pos: np.ndarray) -> np.ndarray:
+            return _clamp_to_bounds(pos)
+
+        def _obs(self) -> np.ndarray:
+            return compute_obs(self._agent, self._target)
+
         def reset(self, *, seed=None, options=None):
             super().reset(seed=seed if seed is not None else self._seed)
             self._seed = None  # only honor the ctor seed on the first reset
@@ -114,13 +122,13 @@ if _HAVE_GYM:
             self._pending_bonus = 0.0
             self._steps = 0
             self.catches = 0
-            return compute_obs(self._agent, self._target), {}
+            return self._obs(), {}
 
         def step(self, action):
             vel = action_to_velocity(int(action))
             reward = 0.0
             for _ in range(ACTION_REPEAT):
-                self._agent = _clamp_to_bounds(self._agent + vel * DT)
+                self._agent = self._move(self._agent + vel * DT)
                 cur = float(np.hypot(*(self._target - self._agent)))
                 # Progress + step penalty + any bonus queued by the previous sub-frame's catch.
                 reward += (self._prev_dist - cur) / MAX_DIST - STEP_PENALTY + self._pending_bonus
@@ -133,5 +141,5 @@ if _HAVE_GYM:
                     self._pending_bonus = TOUCH_BONUS  # lands next sub-frame (matches Godot)
             self._steps += 1
             truncated = self._steps >= MAX_STEPS
-            return (compute_obs(self._agent, self._target), reward, False, truncated,
+            return (self._obs(), reward, False, truncated,
                     {"catches": self.catches})

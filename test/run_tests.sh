@@ -61,6 +61,13 @@ echo "== Trained chase check (headless) =="
 echo "== Trained chase TWIN check: net trained in NumPy (no Godot) deploys back (headless, #37) =="
 "$GODOT" --headless --path . res://test/integration/trained_chase_twin_scene.tscn
 
+echo "== Trained chase RAYS twin check: analytic-ray-trained net vs REAL physics rays (headless, #364) =="
+"$GODOT" --headless --path . res://test/integration/trained_chase_rays_scene.tscn
+
+echo "== Trained chase JAX twin check: jit-batch-trained net deploys back (headless, #361) =="
+# Deploy needs NO jax — the committed net is ordinary ncnn; only the trainer needs the add-on.
+"$GODOT" --headless --path . res://test/integration/trained_chase_jax_scene.tscn
+
 echo "== Launcher runtime check: change_scene_to_file initializes Sync (#239, headless) =="
 "$GODOT" --headless --path . res://test/integration/launcher_runtime_scene.tscn
 
@@ -227,6 +234,55 @@ if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import ray" >/dev
 	echo "RLlib smoke OK."
 else
 	echo "SKIP: ray not installed in .venv-train (run scripts/setup_training.sh to enable the RLlib smoke)."
+fi
+
+echo "== RLlib multi-policy PettingZoo smoke (skipped if ray not installed in .venv-train) =="
+# #123: stock RLlib multi-agent PPO over ParallelPettingZooEnv(GodotParallelEnv) — one policy per
+# agent_policy_names entry, each actor exported to ncnn. Same ray gate as the #110 smoke above.
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import ray" >/dev/null 2>&1; then
+	RLLIB_PZ_TMP="$(mktemp -d)"
+	TIMESTEPS="${RLLIB_PZ_SMOKE_TIMESTEPS:-4000}" \
+	TRAIN_DIR="$RLLIB_PZ_TMP/logs" OUTDIR="$RLLIB_PZ_TMP/models" EXPERIMENT="hide_seek_rllib_smoke" \
+		./scripts/train_rllib_pettingzoo.sh
+	for P in seeker hider; do
+		test -f "$RLLIB_PZ_TMP/models/hide_seek_rllib_${P}.ncnn.param" || { echo "FAIL: RLlib PZ '$P' ncnn .param not produced" >&2; rm -rf "$RLLIB_PZ_TMP"; exit 1; }
+		test -f "$RLLIB_PZ_TMP/models/hide_seek_rllib_${P}.ncnn.bin"   || { echo "FAIL: RLlib PZ '$P' ncnn .bin not produced" >&2; rm -rf "$RLLIB_PZ_TMP"; exit 1; }
+	done
+	rm -rf "$RLLIB_PZ_TMP"
+	echo "RLlib multi-policy PettingZoo smoke OK."
+else
+	echo "SKIP: ray not installed in .venv-train (run scripts/setup_training.sh to enable the RLlib PettingZoo smoke)."
+fi
+
+echo "== JAX twin trainer smoke (skipped if jax not installed in .venv-train) =="
+# #361: tiny jit-batch PPO run + flax->torch->TorchScript export. Deploy-side correctness is
+# gated separately by the always-on trained_chase_jax_scene regression (needs no jax).
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import jax, flax, optax" >/dev/null 2>&1; then
+	JAX_TMP="$(mktemp -d)"
+	.venv-train/bin/python scripts/train_chase_jax.py --timesteps "${JAX_SMOKE_TIMESTEPS:-8192}" \
+		--num_envs 16 --num_steps 32 --out "$JAX_TMP/chase_jax_smoke.pt"
+	test -f "$JAX_TMP/chase_jax_smoke.pt" || { echo "FAIL: JAX twin .pt not produced" >&2; rm -rf "$JAX_TMP"; exit 1; }
+	test -f "$JAX_TMP/chase_jax_smoke.pt.shape.json" || { echo "FAIL: JAX twin sidecar not produced" >&2; rm -rf "$JAX_TMP"; exit 1; }
+	rm -rf "$JAX_TMP"
+	echo "JAX twin trainer smoke OK."
+else
+	echo "SKIP: jax not installed in .venv-train (.venv-train/bin/pip install -r requirements-jax.txt to enable)."
+fi
+
+echo "== SKRL backend smoke (skipped if skrl not installed in .venv-train) =="
+# #25: stock skrl 2.1 PPO over the shared single-agent gymnasium adapter, deploy trunk traced
+# inline -> ncnn. Same optional-add-on gate as the RLlib smokes above.
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import skrl" >/dev/null 2>&1; then
+	SKRL_TMP="$(mktemp -d)"
+	TIMESTEPS="${SKRL_SMOKE_TIMESTEPS:-2000}" ROLLOUTS=128 \
+	OUTDIR="$SKRL_TMP/models" \
+		./scripts/train_skrl.sh
+	test -f "$SKRL_TMP/models/chase_skrl_policy.ncnn.param" || { echo "FAIL: SKRL ncnn .param not produced" >&2; rm -rf "$SKRL_TMP"; exit 1; }
+	test -f "$SKRL_TMP/models/chase_skrl_policy.ncnn.bin"   || { echo "FAIL: SKRL ncnn .bin not produced" >&2; rm -rf "$SKRL_TMP"; exit 1; }
+	rm -rf "$SKRL_TMP"
+	echo "SKRL smoke OK."
+else
+	echo "SKIP: skrl not installed in .venv-train (run scripts/setup_training.sh to enable the SKRL smoke)."
 fi
 
 echo "== CleanRL + RND intrinsic-reward smoke (skipped if godot_rl absent in .venv-train) =="

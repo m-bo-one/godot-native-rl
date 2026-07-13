@@ -13,6 +13,7 @@ const DEMOS := [
 	["res://examples/chase_the_target/evolution_lab.tscn", "Evolution Lab (train LIVE)", "Watch a net LEARN chase in-engine — 8 worlds evolving + the best net deployed live. No Python (#131)."],
 	["res://examples/chase_the_target/chase_the_target_debug.tscn", "Live Policy Swap (Chase)", "Hot-swap fully- vs partially-trained nets from a dropdown — see the learning gradient, same scene, native ncnn, no Python (F3 for obs/actions)."],
 	["res://examples/seek_target/seek_target.tscn", "Seek & Avoid (sensor-only)", "Reach the goal, dodge the patrolling hazard — obs is ONE RelativePositionSensor2D; net trained in-engine by CMA-ES."],
+	["res://examples/chase_the_target/chase_rays.tscn", "Chase with Obstacles (NumPy-trained)", "Trained 100% OUTSIDE the engine (analytic-ray twin, #364); deployed vs real physics raycasts."],
 	["res://examples/rover_3d/rover_3d.tscn", "Rover (3D)", "Discrete-action 3D rover navigating to a goal."],
 	["res://examples/ball_chase/ball_chase.tscn", "Ball Chase (2D, SAC)", "Continuous-control agent chases a ball (Soft Actor-Critic)."],
 	["res://examples/fly_by/fly_by.tscn", "Fly By (3D, PPO)", "Continuous-control plane (pitch/turn), DiagGaussian sampling."],
@@ -23,6 +24,7 @@ const DEMOS := [
 	["res://examples/coop_collect/coop_collect.tscn", "Coop Collect (MA-POCA)", "Two agents share a reward and split up to collect items."],
 	["res://examples/quadruped_walk/quadruped_walk_track.tscn", "Quadruped Walk (locomotion)", "Code-built quadruped walks ~21m toward the finish (Jolt)."],
 	["res://examples/quadruped_walk/quadruped_hurdles_track.tscn", "Quadruped Hurdles", "Quadruped runs and clears hurdles (raycast perception + curriculum)."],
+	["res://examples/quadruped_walk/quadruped_jump_track.tscn", "Quadruped Jump (solid walls)", "PHYSICALLY-SOLID hurdles — the quadruped genuinely leaps a 0.3-0.5m wall (#286)."],
 	["res://examples/quadruped_walk/hexapod_walk_track.tscn", "Hexapod Walk (6-leg)", "Many-legged morphology — same reward, walks ~21m."],
 	["res://examples/quadruped_walk/quadruped_race.tscn", "Generation Race", "500k vs 2.5M vs 6M training generations race — the learning arc."],
 ]

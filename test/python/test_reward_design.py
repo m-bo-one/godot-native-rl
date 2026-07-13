@@ -177,6 +177,48 @@ class TestEvolution(unittest.TestCase):
         self.assertEqual(len(rd.dedup([a, a2, b])), 2)
 
 
+class TestEvalFitness(unittest.TestCase):
+    # #368: the eval fitness must come from VecMonitor's per-step info["episode"] dicts (the
+    # shipped-reward episode returns) — VecMonitor has NO ep_info_buffer (that's on the SB3 model,
+    # and it would hold candidate-reward returns, which Eureka forbids scoring on).
+    def test_fitness_from_infos_collects_vecmonitor_episodes(self):
+        step_infos = [
+            [{}],                                                  # no episode ended this step
+            [{"episode": {"r": 2.0, "l": 10, "t": 0.1}}],
+            [{}, {"episode": {"r": 4.0, "l": 8, "t": 0.2}}],       # 2 envs, one ends
+        ]
+        self.assertEqual(rd.fitness_from_infos(step_infos), 3.0)
+
+    def test_fitness_from_infos_no_episodes_is_nan(self):
+        import math
+        self.assertTrue(math.isnan(rd.fitness_from_infos([[{}], [{}]])))
+        self.assertTrue(math.isnan(rd.fitness_from_infos([])))
+
+    def test_select_survivors_drops_nan(self):
+        # A NaN fitness (failed/short eval) must not poison the elitism sort.
+        pop = [{"id": 0}, {"id": 1}, {"id": 2}]
+        surv = rd.select_survivors(pop, [float("nan"), 0.9, 0.5], keep=2)
+        self.assertEqual([r["id"] for r in surv], [1, 2])
+
+    def test_resolve_api_key_provider_aware(self):
+        env = {"ANTHROPIC_API_KEY": "sk-ant", "OPENROUTER_API_KEY": "sk-or"}
+        self.assertEqual(rd.resolve_api_key("anthropic", "", env), "sk-ant")
+        self.assertEqual(rd.resolve_api_key("openrouter", "", env), "sk-or")
+        # Never cross-send another provider's key.
+        self.assertEqual(rd.resolve_api_key("openrouter", "", {"ANTHROPIC_API_KEY": "sk-ant"}), "")
+        self.assertEqual(rd.resolve_api_key("ollama", "", env), "")   # local, no auth
+        self.assertEqual(rd.resolve_api_key("anthropic", "cli-key", env), "cli-key")  # explicit wins
+
+    def test_reflection_includes_survivors(self):
+        # #368: elitism must actually reach the LLM — survivors appear in the reflection.
+        surv = [{"terms": [{"type": "alive_bonus", "amount": 0.5}]}]
+        refl = rd.build_reflection(CHASE_RECIPE, {}, [1.0], survivors=surv)
+        self.assertIn("Survivors", refl)
+        self.assertIn("alive_bonus", refl)
+        # Without survivors the reflection is unchanged in spirit (no survivors section).
+        self.assertNotIn("Survivors", rd.build_reflection(CHASE_RECIPE, {}, [1.0]))
+
+
 class TestFitness(unittest.TestCase):
     def test_extract_catches_passed_and_failed(self):
         self.assertEqual(rd.extract_catches("TRAINED CHASE PASSED (19 catches in 1800 frames)"), 19.0)

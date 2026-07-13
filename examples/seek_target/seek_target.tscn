@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://examples/seek_target/seek_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/seek_target/seek_agent.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="4"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/fit_camera_2d.gd" id="6"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
 
 [node name="SeekGame" type="Node2D"]
 script = ExtResource("1")
@@ -42,3 +43,7 @@ script = ExtResource("5")
 [node name="FitCamera2D" type="Camera2D" parent="."]
 script = ExtResource("6")
 world_rect = Rect2(0, 0, 1000, 600)
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("CYAN dot = agent (trained in-engine, CMA-ES)", "GREEN = goal   ORANGE = patrolling hazard")

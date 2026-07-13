@@ -88,4 +88,32 @@ func _initialize() -> void:
 	h.assert_true(s5.get_image() == null, "get_image with no viewport/capture -> null")
 	s5.free()
 
+	# --- obs_size (#362): render big, observe small — one viewport serves display AND a cheap
+	# policy input. obs_size set -> the captured frame is downscaled to it before encoding, and
+	# get_obs_shape() reports it. Uniform-color frames survive resampling byte-exactly, so the hex
+	# is deterministic. Default (0,0) = no resize (all earlier cases pin that path).
+	var s7 = CameraSensor.new()
+	var vp7 := SubViewport.new()
+	vp7.size = Vector2i(8, 8)
+	s7.viewport = vp7
+	s7.obs_size = Vector2i(2, 2)
+	s7.set_image_for_test(_make_image(8, 8, Image.FORMAT_RGB8, Color(1, 0, 0)))
+	h.assert_eq(s7.get_obs_shape(), [2, 2, 3], "obs_size overrides viewport size in obs_shape")
+	h.assert_eq(s7.get_obs_space_entry(), {"space": "box", "size": [2, 2, 3]}, "obs_size obs_space entry")
+	h.assert_eq(s7.get_observation(), "ff0000ff0000ff0000ff0000", "8x8 red frame downscales to 2x2 red obs")
+	var small: Image = s7.get_image()
+	h.assert_eq(small.get_width(), 2, "get_image resized to obs_size width")
+	h.assert_eq(small.get_height(), 2, "get_image resized to obs_size height")
+	h.assert_eq(small.get_format(), Image.FORMAT_RGB8, "resized get_image keeps target format")
+	# The grayscale path resizes then converts (deploy parity with training obs).
+	s7.grayscale = true
+	s7.set_image_for_test(_make_image(8, 8, Image.FORMAT_RGBA8, Color(1, 1, 1)))
+	h.assert_eq(s7.get_obs_shape(), [2, 2, 1], "obs_size + grayscale obs_shape")
+	h.assert_eq(s7.get_observation(), "ffffffff", "obs_size + grayscale white obs")
+	var small_gray: Image = s7.get_image()
+	h.assert_eq(small_gray.get_format(), Image.FORMAT_L8, "obs_size + grayscale get_image -> L8")
+	h.assert_eq(small_gray.get_width(), 2, "obs_size + grayscale get_image width")
+	s7.free()
+	vp7.free()
+
 	h.finish(self)

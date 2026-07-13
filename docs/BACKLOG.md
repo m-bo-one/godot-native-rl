@@ -355,7 +355,14 @@ the same change. New items → GitHub issue only.
     `test/unit/test_chase_sf_golden_inference.gd` (5 fixed obs — same set as the SB3/CleanRL chase
     goldens — captured from the real `NcnnRunner` deploy path; auto-discovered by `run_tests.sh`).
     Pins SF deploy-side behavior against conversion/runtime regressions without re-training. (Closes #79)
-19. ⬜ **SKRL backend** — multi-agent + JAX. *v-next, when multi-agent/JAX becomes priority.*
+19. ✅ **SKRL backend** — stock skrl 2.1 PPO (torch flavor) over the godot_rl wire protocol
+    via the shared single-agent gymnasium adapter (`train_rllib.make_godot_env_cls`), the policy
+    trunk traced inline to TorchScript → ncnn (`scripts/train_skrl.{py,sh}`; optional
+    `requirements-skrl.txt` add-on for `.venv-train`, guarded smoke in `run_tests.sh`).
+    **Done 2026-07-12** — spec `docs/superpowers/specs/2026-07-12-skrl-backend-design.md`. The
+    original note said "multi-agent + JAX"; shipped as the torch single-agent interop proof
+    matching the other stock backends (skrl's JAX flavor + multi-agent trainers remain available
+    upstream through the same adapter shapes). (Closes #25)
 45. ✅ **Multi-policy trained example** — the trainer + example that *uses* the `agent_policy_names`
     wire field (shipped 2026-06-03, item 20 slice).
     **Done 2026-06-05** — spec `docs/superpowers/specs/2026-06-05-multi-policy-trained-example-design.md`,

@@ -187,6 +187,14 @@ replays the mean/std game-side before inference:
 This writes a JSON file. Point the controller's `obs_norm_stats_path` export at it. The network
 itself does not carry the stats — this step is required for policies trained with `VecNormalize`.
 
+To share such a policy on the Hugging Face Hub, write the stats with the stem-coupled name so
+`scripts/hf_hub.py` uploads/downloads them alongside the net (#363):
+
+```bash
+.venv-train/bin/python scripts/export_vecnormalize.py path/to/vec_normalize.pkl \
+  --stem examples/rover_3d/models/rover   # -> examples/rover_3d/models/rover_vecnorm.json
+```
+
 ## Continuous action sampling (DiagGaussian std sidecar)
 
 A PPO policy with a continuous (Box) action space stores its std as a state-independent learned

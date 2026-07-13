@@ -1,0 +1,8 @@
+# JAX batch backend for the env twins — OPTIONAL add-on for .venv-train (issue #361).
+# Same isolation pattern as requirements-tune.txt / requirements-hub.txt / requirements-skrl.txt:
+# installed on demand, imported lazily, the JAX twin smoke skips when absent. CPU jaxlib by
+# default; a GPU install is the user's choice (the batch win only shows at large batch on GPU —
+# see the #361 design notes in scripts/chase_twin_jax.py).
+jax==0.9.*
+flax==0.12.*
+optax==0.2.*

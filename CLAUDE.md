@@ -17,7 +17,7 @@ Full train → convert → deploy loop works end-to-end (headless CI tests). All
 standalone headless-compatible play scenes; trained inference is available for chase, rover,
 multi-policy hide & seek, and BallChase. Reusable library in
 `addons/godot_native_rl/` (`sync.gd`/`NcnnSync`, `controllers/`, `reward/`, `sensors/` (+ drop-in `scenes/`; incl. `EntitySensor2D/3D` — #46 M1 variable-length entity obs block: up to N nearest entities as `[N*F zero-padded][N presence flags]`, pure `EntityObsMath`, for the attention encoder),
-`training/`, `net/`, `camera/` (cosmetic drop-in framing cameras: `OrbitCamera` for the 3D demos #265; `FitCamera2D` centers + zoom-fits the 2D demos in a resizable window #272 — both inert headless, never touch obs/actions), `script_templates/` (controller scaffold, auto-installed on plugin enable)); C++ GDExtension at repo root (`src/ncnn_runner.{h,cpp}`). Examples:
+`training/`, `net/`, `camera/` (cosmetic drop-in framing cameras: `OrbitCamera` for the 3D demos #265; `FitCamera2D` centers + zoom-fits the 2D demos in a resizable window #272 — both inert headless, never touch obs/actions), `debug/` (F3 `PolicyDebugOverlay` #49; `DemoLegend` #229 — drop-in per-scene legend naming the agent/goal + a native-ncnn footer, F3 hint only when the overlay actually exists), `script_templates/` (controller scaffold, auto-installed on plugin enable)); C++ GDExtension at repo root (`src/ncnn_runner.{h,cpp}`). Examples:
 `chase_the_target` (2D, + `chase_crowd.tscn` batched shared-policy crowd via `run_inference_batch` + `NcnnCrowdController`), `seek_target` (2D seek-goal/avoid-patrolling-hazard — the `RelativePositionSensor2D` worked example, #38: the ENTIRE obs is one drop-in sensor (goal + hazard slots, 6 floats — unit dir + distance per target, `collect_sensors()` auto-discovery, zero hand-coded obs); the shipped net is the FIRST example trained entirely in-engine — `seek_es_train_parallel.tscn`, sep-CMA-ES, no Python in the loop; also added `object_paths: Array[NodePath]` to both RelativePositionSensors because an exported typed NODE array in a hand-authored .tscn does NOT resolve at runtime instantiation — gotcha), `rover_3d` (3D), `hide_and_seek` (2D self-play), `ball_chase` (2D continuous-control / SAC), `fly_by` (3D continuous-control / PPO, ships the #64 DiagGaussian-sampling demo; play scene renders the goals as glowing checkpoint orbs with the current target highlighted — `fly_by_markers.gd`, cosmetic-only so the sim stays headless — so it's clear what the plane is flying toward, #229), `quadruped_walk` (3D continuous-control locomotion — code-built 8-hinge-joint articulated quadruped on the **Jolt** backend; #60 M1 done: ships a trained PPO ncnn net that walks the full **40m course to the finish** (finish-reach goal + long episodes via `game.reached_finish()` + a gated `finish_bonus`; the old ~21m was the episode timeout, not the gait), deployed in `quadruped_walk_track.tscn`, + a 500k/2.5M/6M learning-stage spread in `models/stages/`, behavioral + golden regressions; **M2 done**: hurdles — 6 forward closeness rays (35-dim obs), clear-hurdle bonus, flat→single→low→race game-side curriculum, the shipped net **clears 6/6 hurdles IN-LANE** (goes OVER them, not beside) over the full ~40m in `quadruped_hurdles_track.tscn` — warm-started from the finish-reaching walker (`--init_from`, 29→35 input padding) + entropy. Hurdles are **perception-only by design** (StaticBody on collision layer 2, `mask=0` — the closeness RaycastSensor reads them, the creature never physically collides), so #277 was a **cosmetic** fix: deploy hurdles render as low, bright, clearly-ascending athletic-hurdle gates the trotting gait visibly clears (decoupled visual in `hurdle_track._make_hurdle_visual`), instead of full-height boxes the (non-colliding) creature appeared to run THROUGH — the invisible sensor/collision box stays at the trained height so the net is byte-identical (no retrain; 40.88m / 6/6 unchanged). The earlier net that REWARD-HACKED by running BESIDE the hurdles is kept as a teaching showcase (`quadruped_hurdles_bypass.ncnn` / `quadruped_hurdles_bypass_track.tscn`). The fix that cracked training: the lateral-lane penalty + clear check MUST use TILE-LOCAL position (`game.torso_local_pos()`) — global position read the ParallelArena tile offset, constant-maxing the penalty on every tile but the first → a flat -12.6 collapse (gotcha). Deploy scenes pin `action_repeat = 4` to the training cadence — at the default 8 the gait collapses; **M3 morphologies done**: a 6-leg **hexapod** (`HexapodBuilder`, 12 joints / 39-dim obs / 12 motors) reusing the same game+agent made leg-count-agnostic — the quadruped's v3 reward transfers, the trained hexapod **walks ~21m at ~1.0 m/s** in `hexapod_walk_track.tscn`, behavioral + golden regressions; **M4 the generation race done**: `quadruped_race.tscn` — ONE creature runs the committed 500k/2.5M/6M generation nets in turn (auto model-swap, clean solo physics) onto a leaderboard (`sequential_race.gd`, pure `race_math.gd` ranking); a prominent HUD banner names the live generation, its (N/3) position, current reach + a countdown to the auto-switch (`format_now`/`countdown_seconds`) so the cycling is unmistakable; learning-arc regression (6M ~26m out-distances 500k ~12m by >=8m); no training run. Sequential not side-by-side because multiple articulated ragdolls in one Jolt space collapse — gotcha documented), `coop_collect` (2D cooperative multi-agent shared-team-reward env — #30 MA-POCA: M1 env foundation + parameter-sharing baseline; **M2 done**: single-file MA-POCA trainer `scripts/train_coop_mapoca.py` — shared decentralized actor + centralized attention critic over the whole team's obs + per-agent leave-one-out counterfactual baseline; trained 1.5M-step actor collects 4/4 items cooperatively under ncnn, behavioral + golden regressions; the trainer asserts world-major team grouping at runtime via the shared-reward invariant; **M3 done**: posthumous credit — `early_finish` 'bank and leave' env variant (per-active-agent step penalty makes collect-then-bank optimal; agent appends an active flag → 17-dim obs), `--early-finish` masks banked agents' inert steps out of the actor loss while their pre-bank steps keep advantage from the team's later return; trained actor collects 3/4 and an agent banks), `3dball` (Unity 3DBall parity — tilting-platform ball balance, 2 continuous actions, trained net balances 1800 frames/0 falls, #47), `gridworld` (Unity GridWorld parity + the GridSensor2D worked example — 8×8 grid, 5 discrete actions, 52-dim obs, #48), `sorter` (#46 M2: variable-count numbered tiles visited in ascending order — the attention encoder's toy task; obs = `EntitySensor2D` block `[6*4 entities][6 presence flags]`, scripted-expert smoke. **M2 torch side done** (#258): `scripts/attention_encoder.py` — a torch masked-multi-head-self-attention encoder numerically identical to the #307 ncnn-verified pure-Python replica (`encoder_forward`), so it exports byte-for-byte through the direct `attention_policy_layers` writer; `scripts/train_sorter_cleanrl.py`/`train_sorter.sh` train it with CleanRL PPO over the 8-world `sorter_train_parallel.tscn`. The export-parity spike (`scripts/spike_attention_ncnn.py`) confirms torch↔ncnn parity ~7e-5 (argmax exact) and records the **pnnx-emission verdict: `pnnx-decomposed`** (pnnx has no MHA to fuse from a hand-built module) → the **direct hand-written export is the deploy path**, not ONNX/pnnx. fp16-safe `-6e4` mask + per-head `1/√d` scale are load-bearing (train/deploy diverge otherwise). Guarded CleanRL trainer smoke in `run_tests.sh`. **M3 done** (#259): the same encoder wraps as an SB3 `BaseFeaturesExtractor` (`scripts/attention_features_extractor.py`) + an SB3 PPO trainer (`scripts/train_sorter_sb3.py`/`train_sorter_sb3.sh`) — with `net_arch=[]` the policy's `action_net` is a single linear head, so the deploy actor is `encoder → head` (the identical M2 export contract) and both backends emit the same-shape ncnn graph. A deterministic SB3→ncnn export-parity unit test (no Godot) gates it (atol 1e-2, argmax exact); the SB3 trainer is proven end-to-end manually, not wired as a redundant Godot smoke (the M2 CleanRL smoke already covers env→encoder→export; SB3's `train_chase.py` isn't smoked either). **M4 done** (#260): the deployed trained net + behavioral regression. **Key finding: vanilla PPO STALLS on the Sorter's sparse strict-ordering reward** (the +1 fires only on a correct-*order* visit; two independent runs — ent_coef 0.01 to 375k and 0.05 to 166k — stayed flat at the random baseline / negative per-step reward). So the shipped net is **behavior-cloned from the scripted expert** (which reliably solves) using the SAME attention encoder: `sorter_expert_agent.gd` + `record_sorter_demos.tscn` record demos; `scripts/train_sorter_bc.py` BC-trains the AttentionEncoder + head (train_acc ~0.83) and exports via the M2 direct exporter. Deployed in `test/integration/sorter_trained_scene.tscn` (needs a `Sync` node in the scene to drive inference — the controller enum is `{INHERIT,HUMAN,TRAINING,NCNN_INFERENCE}` so the deploy agent is `control_mode=3`, gotcha): under ncnn it solves **7 episodes / 33 correct vs 5 wrong-order visits** in 2400 frames. Large demos gitignored (regen via the record scene). #46 checkbox-3 parity is covered by the #307 `test_attention_golden_inference.gd`; this is checkbox-4), `visual_chase` (the chase task through PIXELS ONLY — code-rasterized 36×36×3 `camera_2d` obs → SB3 NatureCNN, trains fully headless; deploys via the item-36 image route `get_inference_image()` → `run_inference_image`, its first trained consumer; TorchScript→ncnn conv export, #35). **Grayscale image deploy (#36):** `run_inference_image(img, normalize, grayscale=false)` gained a 1-channel `PIXEL_GRAY`/`FORMAT_L8` path; `NcnnControllerCore` auto-detects it from an `L8` frame (a grayscale `CameraSensor` captures `L8`), so a 1-channel-trained policy deploys with no new flag — golden-gated by `test_image_inference_gray_golden.gd` (`make_synthetic_cnn.py --grayscale`). The live-render capture path (`viewport.get_texture().get_image()`, unreachable headless) is verified by `test/integration/camera_render_check.tscn` under `xvfb-run` (not in headless CI by design). Wire protocol is
 godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
 [docs/dev/DEVELOPMENT.md](docs/dev/DEVELOPMENT.md).**
@@ -108,7 +108,12 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   `PHASES`/`TIMESTEPS_PER_PHASE`/`SPEEDUP`/`ACTION_REPEAT` overrides. Library:
   `training/{elo,opponent_pool,self_play_manager}.gd` + `reload_model()` on both controllers.
 - **Train (hide & seek, two distinct policies):** `./scripts/train_hide_seek_multipolicy.sh` — custom
-  single-file multi-policy PPO; seeker + hider learn separate networks. Distinct policy identity is
+  single-file multi-policy PPO; seeker + hider learn separate networks.
+  **Simultaneous self-play (#189):** `SNAPSHOT_EVERY=<env-steps> [POOL_DIR=models/selfplay_pool]`
+  cross-freezes BOTH live learners into the opponent pool mid-run (TorchScript→ncnn snapshot +
+  `pool.json` ELO-ledger registration per policy — the exact #29 league layout, so
+  `SelfPlayManager`/`pick_opponent` consume it unchanged): the pool grows DURING one run, no
+  alternating-phase restarts. Default 0 = off (existing behavior untouched). Distinct policy identity is
   scene-driven (#73): each agent bakes a `policy_group` (`seeker`/`hider`) in `hide_seek_world.tscn`,
   honored only when the training scene's Sync sets `multi_policy=true` (the *same* world scene stays
   reusable by the shared-policy example, where the flag is off) — no `--multi-policy` cmdline gate.
@@ -301,6 +306,22 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   exports the RLModule actor → TorchScript → `export_to_ncnn.py`. Ecosystem interop (#110), not a
   replacement for the custom trainers. `TIMESTEPS`/`SPEEDUP`/`ACTION_REPEAT`/`BASE_PORT`/
   `EXPERIMENT`/`TRAIN_DIR`/`OUTDIR`/`SCENE` overrides.
+- **Train (multi-policy RLlib via PettingZoo):** `./scripts/train_rllib_pettingzoo.sh` — stock
+  RLlib **multi-agent** PPO over `ParallelPettingZooEnv(GodotParallelEnv)` (#123): one policy
+  module per `agent_policy_names` entry (hide & seek seeker+hider), spaces squeezed per agent
+  (`Dict['obs']`→Box, `Tuple(Discrete)`→Discrete), each RLModule actor → TorchScript
+  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The env writes
+  `agent_policies.json`+`env_meta.json` at construction; the `policy_mapping_fn` reads the FILE —
+  ray cloudpickles `__main__` functions by value, so module-global registries are per-function
+  copies (gotcha, see docs/dev/gotchas.md). Same overrides as the RLlib backend; guarded smoke.
+- **Train (chase, SKRL backend):** `./scripts/train_skrl.sh` — stock **skrl 2.1** PPO (torch) over
+  the shared single-agent gymnasium adapter (#25, backlog 19); models are user-authored skrl
+  mixin classes over plain `nn.Sequential` trunks, so the deploy trunk (obs→logits) is traced to
+  TorchScript **inline** (no checkpoint introspection) → `export_to_ncnn.py`. Optional
+  `requirements-skrl.txt` add-on for `.venv-train` (ray-add-on pattern); guarded smoke. skrl 2.1
+  gotchas: `PPO_CFG` dataclass (v1's dict is gone) and `Model.compute` is called **positionally**
+  — define `compute(self, inputs, role="")`. `TIMESTEPS`/`ROLLOUTS`/`BASE_PORT`/`OUTDIR`/`SCENE`
+  overrides.
 - **Train (chase, NumPy twin — NO Godot, NO socket):** `./scripts/train_chase_twin.sh` (#37) — SB3 PPO
   over `scripts/chase_twin_env.py`, a pure-NumPy Gymnasium **twin** of the chase env that reproduces
   the Godot dynamics EXACTLY (obs byte-identical to `ChaseObs`; `action_repeat=8` sub-frames at Δt=1/60
@@ -310,6 +331,26 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   **sim-to-deploy gap** is validated in the real engine by `trained_chase_twin_scene.tscn` (standard
   chase behavioral checker, catches ≥ 5). NumPy not JAX — the win is deleting the socket+engine (a JAX
   batch backend is a noted extension, #361). `TIMESTEPS`/`N_ENVS`/`OUT`/`OUTDIR` overrides.
+  **Raycast twin (#364):** `./scripts/train_chase_rays_twin.sh` — the same approach with the missing
+  RAY axis proven: `chase_rays` = chase + 4 solid AABB obstacles (CODE-side minimal-penetration
+  blocking, twin-exact — not engine physics) + an 8-ray surround `RaycastSensor2D` (cone 315°,
+  length 300; obs 5+8=13). The twin's slab-method **analytic ray-vs-AABB matches the engine's real
+  physics raycasts EXACTLY** (worst |err| 0.0 on the committed golden fixture
+  `test/fixtures/chase_rays_golden_obs.json`, pinned from BOTH sides — `test_chase_rays.gd` real
+  physics vs `test_chase_rays_twin_env.py` analytic), so the NumPy-trained net (400k steps in ~3 min,
+  ~2200 steps/s) deploys against real casts and catches 15+/1800 frames
+  (`trained_chase_rays_scene.tscn`; play scene `chase_rays.tscn`, in the launcher). Honest limit:
+  only analytic shapes (AABB/circle) twin exactly — Jolt physics envs have no analytic form (#60).
+  **JAX batch twin (#361):** `./scripts/train_chase_jax.sh` — the twin's step/obs/reward ported to
+  JAX (`scripts/chase_twin_jax.py`, `batched_step` = one jit kernel over the whole env batch;
+  numerical parity with the NumPy twin unit-tested) + a PureJaxRL-style single-file PPO
+  (`train_chase_jax.py`: scan rollouts, GAE, minibatch updates — all jit). Measured **~104k
+  env-steps/s on CPU at batch 128** (1M steps in 9.6 s; ~47× the NumPy twin's ~2.2k, ~3 orders of
+  magnitude past the wire bridge; same code runs unchanged on GPU). Deploy: flax params →
+  weight-copied torch MLP (unit-tested parity seam `params_to_torch_actor`) → TorchScript →
+  `export_to_ncnn.py`; the committed net catches 18/1800 frames in the real engine
+  (`trained_chase_jax_scene.tscn` — deploy needs NO jax). Opt-in dep: `.venv-train/bin/pip install
+  -r requirements-jax.txt` (jax/flax/optax; guarded trainer smoke, like tune/hub).
 - **Tune hyperparameters (Optuna):** `./scripts/tune_optuna.sh` — an Optuna PPO HP search over an
   example via the godot-rl bridge (#113, godot_rl parity). Each trial samples a PPO HP set, runs a
   short training trial, and reports `ep_rew_mean` (maximized); prints + writes the best set to
@@ -370,6 +411,8 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
 - **Export VecNormalize stats (deploy):** `.venv-train/bin/python scripts/export_vecnormalize.py
   vec_normalize.pkl` → JSON; set the controller's `obs_norm_stats_path` so `ObsNormalize` replays
   the obs mean/std game-side before inference (policies trained with SB3 `VecNormalize`).
+  `--stem <model-stem>` writes the stem-coupled `<stem>_vecnorm.json` instead (#363) so the stats
+  ride along on a Hub push/pull.
 - **Export continuous action std (deploy):** `.venv-train/bin/python scripts/export_action_dist.py
   models/policy.zip` → `*_action_dist.json`; set the controller's `action_dist_stats_path` and
   `deterministic_inference=false` so `ActionDecode` samples `mean + std·N(0,1)` (PPO DiagGaussian,
@@ -380,7 +423,8 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   argmax-parity). Produces `m_int8.ncnn.{param,bin}`; deploy via `NcnnRunner` like fp32.
 - **Share/fetch models on Hugging Face Hub (#31):** `.venv-train/bin/python scripts/hf_hub.py push
   <dir|stem> <repo_id>` uploads a model dir (all models) or one stem/param path (that model + its
-  `*.recurrent.json`/`*_action_dist.json` sidecars) with an auto-generated model card;
+  `*.recurrent.json`/`*_action_dist.json`/`*_vecnorm.json` sidecars, #363 — the card gains an
+  `obs_norm_stats_path` deploy hint when norm stats ship) with an auto-generated model card;
   `pull <repo_id> <dest>` fetches them back. Token: `--token` → `HF_TOKEN` → cached login. Isolated
   opt-in dep — install once: `.venv-train/bin/pip install -r requirements-hub.txt` (`huggingface_hub`
   is imported lazily, so the pure helpers stay import-free). Pure helpers + injected-client
