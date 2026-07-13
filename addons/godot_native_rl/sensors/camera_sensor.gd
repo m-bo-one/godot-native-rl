@@ -51,14 +51,19 @@ func get_obs_shape() -> Array:
 func _obs_size_active() -> bool:
 	return obs_size.x > 0 and obs_size.y > 0
 
-# Downscale to obs_size when active (#362). Duplicates before resizing so an injected/test image
-# (and the viewport texture's internal Image) is never mutated in place.
+# A frame this sensor may mutate (resize/convert) in place. Real viewport captures
+# (viewport.get_texture().get_image()) are already caller-owned copies, so the hot path pays NO
+# extra full-resolution duplicate per frame; only test-injected images (set_image_for_test) are
+# duplicated to protect the caller's instance.
+func _owned_frame(img: Image) -> Image:
+	return img.duplicate() if _capture_fn != null else img
+
+# Downscale to obs_size when active (#362). Callers pass an owned frame; resizes in place.
 func _apply_obs_size(img: Image) -> Image:
 	if not _obs_size_active() or (img.get_width() == obs_size.x and img.get_height() == obs_size.y):
 		return img
-	var resized: Image = img.duplicate()
-	resized.resize(obs_size.x, obs_size.y)
-	return resized
+	img.resize(obs_size.x, obs_size.y)
+	return img
 
 func get_obs_space_entry() -> Dictionary:
 	return {"space": "box", "size": get_obs_shape()}
@@ -74,12 +79,10 @@ func get_observation() -> String:
 	if img == null or img.is_empty():
 		push_warning("CameraSensor: capture returned no image; returning empty observation.")
 		return ""
-	img = _apply_obs_size(img)  # resize first, then convert (#362)
+	img = _apply_obs_size(_owned_frame(img))  # resize first, then convert (#362)
 	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8
 	if img.get_format() != target_format:
-		var converted: Image = img.duplicate()
-		converted.convert(target_format)
-		img = converted
+		img.convert(target_format)
 	var bytes: PackedByteArray = img.get_data()
 	var shape: Array = get_obs_shape()
 	var expected: int = shape[0] * shape[1] * shape[2]
@@ -99,10 +102,9 @@ func get_image() -> Image:
 	var img: Image = _capture()
 	if img == null:
 		return null
-	img = _apply_obs_size(img)  # deploy capture matches the training obs resolution (#362)
+	img = _apply_obs_size(_owned_frame(img))  # deploy capture matches the training obs resolution (#362)
 	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8
 	if img.get_format() != target_format:
-		img = img.duplicate()
 		img.convert(target_format)
 	return img
 

@@ -19,9 +19,8 @@ import math
 
 import numpy as np
 
-from chase_twin_env import (  # noqa: F401  (re-exported constants used by the trainer)
-    ACTION_REPEAT, ARENA_H, ARENA_W, DT, MAX_DIST, MAX_STEPS, MOVE_SPEED, N_ACTIONS,
-    STEP_PENALTY, TOUCH_BONUS, TOUCH_RADIUS, action_to_velocity, compute_obs,
+from chase_twin_env import (
+    ARENA_H, ARENA_W, N_ACTIONS, _clamp_to_bounds, compute_obs,
 )
 
 try:
@@ -90,10 +89,14 @@ def closeness(distance: float, ray_length: float = RAY_LENGTH) -> float:
     return min(max(1.0 - distance / ray_length, 0.0), 1.0)
 
 
+# The fan is constant — computed once, not per env step (the twin's whole point is throughput).
+_RAY_DIRS = tuple(ray_directions())
+
+
 def ray_closenesses(agent) -> list:
     """The 8-ray obs block at `agent`: nearest obstacle hit per ray, closeness-encoded."""
     out = []
-    for d in ray_directions():
+    for d in _RAY_DIRS:
         best = -1.0
         for box in OBSTACLES:
             hit = ray_aabb_distance(agent, d, box)
@@ -114,7 +117,7 @@ def resolve_aabb(pos, aabb):
     x, y = float(pos[0]), float(pos[1])
     min_x, min_y, max_x, max_y = aabb
     if not (min_x < x < max_x and min_y < y < max_y):
-        return np.array([x, y])
+        return pos  # no-op path (the common case): no allocation
     push_left = x - min_x
     push_right = max_x - x
     push_up = y - min_y
@@ -137,10 +140,6 @@ def resolve_obstacles(pos):
     return p
 
 
-def _clamp_to_bounds(pos):
-    return np.array([min(max(pos[0], 0.0), ARENA_W), min(max(pos[1], 0.0), ARENA_H)])
-
-
 def full_obs(agent, target) -> "np.ndarray":
     return np.concatenate([
         compute_obs(np.asarray(agent), np.asarray(target)),
@@ -149,58 +148,29 @@ def full_obs(agent, target) -> "np.ndarray":
 
 
 if _HAVE_GYM:
-    class ChaseRaysTwinEnv(gym.Env):
-        """Chase + solid AABB obstacles + analytic 8-ray obs, as a Gymnasium env (#364)."""
+    from chase_twin_env import ChaseTwinEnv
 
-        metadata = {"render_modes": []}
+    class ChaseRaysTwinEnv(ChaseTwinEnv):
+        """Chase + solid AABB obstacles + analytic 8-ray obs (#364). Subclasses the proven
+        chase twin: only the movement rule (_move: clamp then block), the spawn rule
+        (_random_pos: rejection-sampled outside the boxes) and the obs (_obs: base 5 + rays)
+        differ — the transfer-critical sub-frame reward/rebase machinery stays single-source
+        in ChaseTwinEnv.step."""
 
         def __init__(self, seed: int | None = None):
-            super().__init__()
-            self.action_space = spaces.Discrete(N_ACTIONS)
+            super().__init__(seed=seed)
             low = np.array([-1.0, -1.0, -1.0, -1.0, 0.0] + [0.0] * N_RAYS, dtype=np.float32)
             high = np.array([1.0, 1.0, 1.0, 1.0, 1.0] + [1.0] * N_RAYS, dtype=np.float32)
             self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
-            self._agent = np.zeros(2)
-            self._target = np.zeros(2)
-            self._prev_dist = 0.0
-            self._pending_bonus = 0.0
-            self._steps = 0
-            self.catches = 0
-            self._seed = seed
 
-        def _random_pos_outside(self):
+        def _move(self, pos):
+            return resolve_obstacles(_clamp_to_bounds(pos))
+
+        def _random_pos(self):
             while True:
-                p = np.array([self.np_random.uniform(0.0, ARENA_W),
-                              self.np_random.uniform(0.0, ARENA_H)])
+                p = super()._random_pos()
                 if not inside_any_obstacle((p[0], p[1])):
                     return p
 
-        def reset(self, *, seed=None, options=None):
-            super().reset(seed=seed if seed is not None else self._seed)
-            self._seed = None
-            self._agent = self._random_pos_outside()
-            self._target = self._random_pos_outside()
-            self._prev_dist = float(np.hypot(*(self._target - self._agent)))
-            self._pending_bonus = 0.0
-            self._steps = 0
-            self.catches = 0
-            return full_obs(self._agent, self._target), {}
-
-        def step(self, action):
-            vel = action_to_velocity(int(action))
-            reward = 0.0
-            for _ in range(ACTION_REPEAT):
-                self._agent = resolve_obstacles(_clamp_to_bounds(self._agent + vel * DT))
-                cur = float(np.hypot(*(self._target - self._agent)))
-                reward += (self._prev_dist - cur) / MAX_DIST - STEP_PENALTY + self._pending_bonus
-                self._pending_bonus = 0.0
-                self._prev_dist = cur
-                if cur < TOUCH_RADIUS:
-                    self.catches += 1
-                    self._target = self._random_pos_outside()
-                    self._prev_dist = float(np.hypot(*(self._target - self._agent)))
-                    self._pending_bonus = TOUCH_BONUS
-            self._steps += 1
-            truncated = self._steps >= MAX_STEPS
-            return (full_obs(self._agent, self._target), reward, False, truncated,
-                    {"catches": self.catches})
+        def _obs(self):
+            return full_obs(self._agent, self._target)

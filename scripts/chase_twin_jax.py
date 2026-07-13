@@ -24,8 +24,8 @@ import jax
 import jax.numpy as jnp
 
 # The single source of the matching math/constants is the NumPy twin.
-from chase_twin_env import (  # noqa: F401  (re-exported for the trainer)
-    ACTION_REPEAT, ARENA_H, ARENA_W, DT, MAX_DIST, MAX_STEPS, MOVE_SPEED, N_ACTIONS,
+from chase_twin_env import (  # noqa: F401  (OBS_DIM/N_ACTIONS re-exported for the trainer)
+    ACTION_REPEAT, ARENA_H, ARENA_W, DT, MAX_DIST, MOVE_SPEED, N_ACTIONS,
     OBS_DIM, STEP_PENALTY, TOUCH_BONUS, TOUCH_RADIUS,
 )
 
@@ -66,6 +66,11 @@ def compute_obs(agent: jnp.ndarray, target: jnp.ndarray) -> jnp.ndarray:
 
 
 _batched_obs = jax.vmap(compute_obs)
+
+
+def batched_obs(state: "TwinState") -> jnp.ndarray:
+    """The (N, OBS_DIM) obs for a batch state (public — the trainer's initial obs)."""
+    return _batched_obs(state.agent, state.target)
 
 
 def _random_pos(key: jnp.ndarray) -> jnp.ndarray:

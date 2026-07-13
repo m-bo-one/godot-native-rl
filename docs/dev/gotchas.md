@@ -221,5 +221,7 @@ dict, silently get **two different dicts**: the env fills its copy, the mapping 
 `num_env_runners=0` — same process, still copied at pickle time.
 
 **Rule:** never pass runtime-discovered state between ray-registered functions through module
-globals. Use a file (the #123 fix: the env writes `agent_policies.json`, the mapping fn lazily
-reads it) or ship the state inside `env_config` when it's known up front.
+globals. Encode it in the data that already flows between them — the #123 fix renames the
+PettingZoo agents to `<policy>_<index>` so the `policy_mapping_fn` is a pure string parse over
+the agent id (the canonical PettingZoo convention); alternatively ship state inside `env_config`
+when it's known up front, or through a file as a last resort.

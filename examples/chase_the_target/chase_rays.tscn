@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=8 format=3]
 
 ; chase_rays play scene (#364): the NumPy-twin-trained net (trained with ANALYTIC rays, no Godot)
 ; runs here against REAL physics raycasts + the solid obstacle field. The StaticBody2D boxes exist
@@ -11,9 +11,6 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/fit_camera_2d.gd" id="fitcam2d"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
-
-[sub_resource type="RectangleShape2D" id="ObstacleShape"]
-size = Vector2(100, 100)
 
 [node name="ChaseGame" type="Node2D"]
 script = ExtResource("1")
@@ -30,30 +27,6 @@ ray_length = 300.0
 collision_mask = 1
 
 [node name="Target" type="Node2D" parent="."]
-
-[node name="Obstacle1" type="StaticBody2D" parent="."]
-position = Vector2(300, 200)
-
-[node name="Col1" type="CollisionShape2D" parent="Obstacle1"]
-shape = SubResource("ObstacleShape")
-
-[node name="Obstacle2" type="StaticBody2D" parent="."]
-position = Vector2(700, 200)
-
-[node name="Col2" type="CollisionShape2D" parent="Obstacle2"]
-shape = SubResource("ObstacleShape")
-
-[node name="Obstacle3" type="StaticBody2D" parent="."]
-position = Vector2(300, 400)
-
-[node name="Col3" type="CollisionShape2D" parent="Obstacle3"]
-shape = SubResource("ObstacleShape")
-
-[node name="Obstacle4" type="StaticBody2D" parent="."]
-position = Vector2(700, 400)
-
-[node name="Col4" type="CollisionShape2D" parent="Obstacle4"]
-shape = SubResource("ObstacleShape")
 
 [node name="ChaseAgent" type="Node2D" parent="."]
 script = ExtResource("2")

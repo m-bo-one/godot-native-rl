@@ -9,8 +9,10 @@ to ncnn by scripts/export_to_ncnn.py — the identical deploy contract as the Nu
 
     .venv-train/bin/python scripts/train_chase_jax.py --timesteps 400000 --num_envs 64
 
-Deps: the OPTIONAL requirements-jax.txt add-on for .venv-train (jax/flax/optax). Heavy imports
-are lazy so the module imports (for the export-parity unit test) without running a training.
+Deps: the OPTIONAL requirements-jax.txt add-on for .venv-train (jax/flax/optax). NOTE: unlike
+the torch backends, jax/flax ARE imported at module level (the flax model classes need them at
+class-definition time), so importing this module requires the add-on — the export-parity unit
+test dep-guards accordingly (test_chase_twin_jax.py). Only torch stays lazy (used at export).
 Honest benchmark: prints measured env-steps/s — on CPU the win over the NumPy twin appears at
 larger batch; on GPU the same code scales further (#361's claim is measured, not assumed).
 """
@@ -128,7 +130,7 @@ def main() -> int:
 
     key, kr = jax.random.split(key)
     state = twin.reset_batch(args.num_envs, kr)
-    obs = jnp.asarray(np.asarray(twin._batched_obs(state.agent, state.target)))
+    obs = twin.batched_obs(state)
 
     def policy_step(params, state, obs, key):
         logits = actor.apply(params[0], obs)

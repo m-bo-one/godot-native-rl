@@ -15,12 +15,22 @@ func _initialize() -> void:
 	get_root().add_child(legend)
 	await process_frame
 
-	# The composed text carries every line plus the standing native-ncnn footer.
+	# The composed text carries every line plus the standing native-ncnn footer. WITHOUT a
+	# PolicyDebugOverlay in the scene, the F3 hint must NOT appear (it would be a false
+	# instruction — the overlay is what F3 toggles).
 	var text: String = legend.legend_text()
 	h.assert_true(text.contains("BLUE = RL agent"), "first line present")
 	h.assert_true(text.contains("RED = target"), "second line present")
 	h.assert_true(text.contains("ncnn"), "native-ncnn footer present")
-	h.assert_true(text.contains("F3"), "F3 debugger hint present")
+	h.assert_true(not text.contains("F3"), "no F3 hint without a PolicyDebugOverlay in the scene")
+
+	# With an overlay present (debug build — headless test runs are), the hint appears.
+	var overlay := CanvasLayer.new()
+	overlay.set_script(load("res://addons/godot_native_rl/debug/policy_debug_overlay.gd"))
+	get_root().add_child(overlay)
+	await process_frame
+	h.assert_true(legend.legend_text().contains("F3"), "F3 hint present with a PolicyDebugOverlay")
+	overlay.free()
 
 	# The label node exists and carries the composed text (renders bottom-left when drawn).
 	var label: Label = legend.get_node_or_null("Panel/Label")

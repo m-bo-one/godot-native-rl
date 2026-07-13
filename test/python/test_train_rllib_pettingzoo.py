@@ -39,14 +39,32 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(cfg.policies, ("a", "b", "c"))
 
 
-class TestPolicyMapping(unittest.TestCase):
-    def test_mapping_from_names(self):
-        self.assertEqual(tr.mapping_from_names(["seeker", "hider", "seeker", "hider"]),
-                         {0: "seeker", 1: "hider", 2: "seeker", 3: "hider"})
+class TestPolicyIdentity(unittest.TestCase):
+    # Policy identity travels in the PettingZoo agent id ("<policy>_<index>") — the mapping fn
+    # is a pure string parse, immune to the cloudpickle-by-value trap (see docs/dev/gotchas.md).
+    def test_agent_ids_from_names(self):
+        self.assertEqual(tr.agent_ids_from_names(["seeker", "hider", "seeker", "hider"]),
+                         ["seeker_0", "hider_1", "seeker_2", "hider_3"])
 
     def test_empty_names_raises(self):
         with self.assertRaises(ValueError):
-            tr.mapping_from_names([])
+            tr.agent_ids_from_names([])
+
+    def test_policy_of_parses_and_ignores_episode_arg(self):
+        self.assertEqual(tr.policy_of("seeker_0"), "seeker")
+        self.assertEqual(tr.policy_of("hider_13", "episode-arg-ignored"), "hider")
+        # Policy names containing underscores survive (split on the LAST underscore).
+        self.assertEqual(tr.policy_of("team_red_2"), "team_red")
+
+    def test_policy_of_malformed_id_fails_loud(self):
+        with self.assertRaises(RuntimeError):
+            tr.policy_of("no-index")
+        with self.assertRaises(RuntimeError):
+            tr.policy_of(0)
+
+    def test_inner_index_round_trip(self):
+        ids = tr.agent_ids_from_names(["seeker", "hider"])
+        self.assertEqual([tr.inner_index_of(a) for a in ids], [0, 1])
 
     def test_validate_policies_subset_ok(self):
         tr.validate_policies(["seeker", "hider"], ("seeker", "hider"))  # no raise
@@ -84,32 +102,6 @@ class TestSpaceSqueeze(unittest.TestCase):
     def test_action_non_discrete_raises(self):
         with self.assertRaises(ValueError):
             tr.squeeze_action_space(spaces.Tuple((spaces.Box(low=-1, high=1, shape=(2,)),)))
-
-
-class TestAgentPolicyRegistryFile(unittest.TestCase):
-    # The env -> policy_mapping_fn channel must survive cloudpickle-by-value (ray's register_env
-    # copies __main__ globals into each pickled function, so a module-level registry the env fills
-    # is INVISIBLE to the mapping fn — found live). A file is the source of truth.
-    def test_round_trip_preserves_int_agent_ids(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "agent_policies.json"
-            tr.write_agent_policies(path, {0: "seeker", 1: "hider"})
-            self.assertEqual(tr.read_agent_policies(path), {0: "seeker", 1: "hider"})
-
-    def test_make_policy_mapping_fn_reads_and_fails_loud(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "agent_policies.json"
-            tr.write_agent_policies(path, {0: "seeker", 1: "hider"})
-            fn = tr.make_policy_mapping_fn(path)
-            self.assertEqual(fn(0), "seeker")
-            self.assertEqual(fn(1, "episode-arg-ignored"), "hider")
-            with self.assertRaises(RuntimeError):
-                fn(7)
-
-    def test_mapping_fn_missing_file_fails_loud(self):
-        fn = tr.make_policy_mapping_fn("/nonexistent/agent_policies.json")
-        with self.assertRaises(RuntimeError):
-            fn(0)
 
 
 class TestEnvMeta(unittest.TestCase):

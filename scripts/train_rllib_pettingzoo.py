@@ -11,14 +11,15 @@ Space squeeze: RLlib's default RLModule wants Box obs / Discrete actions, but th
 exposes the raw handshake spaces (Dict({'obs': Box}) / Tuple(Discrete)). A thin PettingZoo
 wrapper (SqueezedGodotParallelEnv, built by make_squeezed_env_cls) squeezes both per agent.
 
-Policy identity: the env writes agent_policies.json (agent_id -> policy_name from the
-wire) at construction; policy_mapping_fn lazily READS THE FILE and fails loud on an
-unknown agent. A file — not a module global — because ray's register_env/config
-cloudpickles __main__ functions BY VALUE: the env creator and the mapping fn each get a
-private COPY of any module-level dict, so a registry the env fills is invisible to the
-mapping fn (found live; see docs/dev/gotchas.md). --policies declares the module set up
-front (RLlib needs the ids before the env exists); the env asserts the wire names are a
-subset, so a scene/CLI mismatch fails loud instead of training a mislabeled policy.
+Policy identity travels IN THE AGENT ID (the canonical PettingZoo convention): the
+squeezed env renames the adapter's integer agents to "<policy>_<index>" from the wire's
+agent_policy_names, so policy_mapping_fn is a pure string parse — stateless, and immune
+to the cloudpickle-by-value trap a module-global registry hits (ray pickles __main__
+functions with private COPIES of their globals; found live, see docs/dev/gotchas.md).
+--policies declares the module set up front (RLlib needs the ids before the env exists);
+the env asserts the wire names are a subset, so a scene/CLI mismatch fails loud instead
+of training a mislabeled policy. env_meta.json (obs_dim/nvec/policies) is still written
+at construction for the per-policy export step.
 
 Run this FIRST (the env opens the server on --base_port and waits), THEN launch the Godot
 multi-policy scene (its Sync sets multi_policy=true, #73). See train_rllib_pettingzoo.sh.
@@ -68,11 +69,28 @@ def parse_args(argv: Sequence[str] | None = None) -> RLlibPZConfig:
 
 # --- Pure helpers (no heavy deps) ---
 
-def mapping_from_names(agent_policy_names: Sequence[str]) -> dict:
-    """agent_id (adapter index) -> policy name, from the wire's agent_policy_names."""
+def agent_ids_from_names(agent_policy_names: Sequence[str]) -> list:
+    """PettingZoo agent ids carrying policy identity: wire agent i with policy P becomes
+    "P_i". The inner adapter's integer index is recoverable (split on the LAST underscore),
+    and policy_of() below is the whole policy_mapping_fn."""
     if not agent_policy_names:
         raise ValueError("agent_policy_names is empty — the scene emitted no agents")
-    return {i: str(name) for i, name in enumerate(agent_policy_names)}
+    return [f"{name}_{i}" for i, name in enumerate(agent_policy_names)]
+
+
+def policy_of(agent_id, *args, **kwargs) -> str:
+    """The RLlib policy_mapping_fn: "<policy>_<index>" -> "<policy>". Pure and stateless
+    (extra args accepted because RLlib passes the episode). Fails loud on a malformed id."""
+    name, _, index = str(agent_id).rpartition("_")
+    if not name or not index.isdigit():
+        raise RuntimeError(f"agent id {agent_id!r} does not carry policy identity "
+                           "(expected '<policy>_<index>')")
+    return name
+
+
+def inner_index_of(agent_id) -> int:
+    """Inverse of agent_ids_from_names for the adapter's integer index."""
+    return int(str(agent_id).rpartition("_")[2])
 
 
 def validate_policies(agent_policy_names: Sequence[str], declared: Sequence[str]) -> None:
@@ -107,39 +125,6 @@ def squeeze_action_space(space):
     return inner
 
 
-def write_agent_policies(path, mapping: dict) -> None:
-    """Persist the wire's agent_id -> policy_name mapping (the env -> policy_mapping_fn channel;
-    a FILE because cloudpickle-by-value makes module globals private per pickled function)."""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps({str(k): v for k, v in mapping.items()}) + "\n")
-
-
-def read_agent_policies(path) -> dict:
-    """Inverse of write_agent_policies (JSON keys back to the adapter's int agent ids)."""
-    return {int(k): v for k, v in json.loads(Path(path).read_text()).items()}
-
-
-def make_policy_mapping_fn(registry_path):
-    """RLlib policy_mapping_fn over the agent_policies.json the env writes at construction.
-    Lazily (re-)reads the file — it doesn't exist until the env has done the wire handshake —
-    and fails loud on a missing file or unknown agent."""
-    cache: dict = {}
-
-    def policy_mapping_fn(agent_id, *args, **kwargs):
-        if agent_id not in cache:
-            try:
-                cache.update(read_agent_policies(registry_path))
-            except OSError as e:
-                raise RuntimeError(
-                    f"agent-policy registry {registry_path} unreadable ({e}) — the env writes it "
-                    "at construction; was the env created with the same registry_path?") from e
-        if agent_id not in cache:
-            raise RuntimeError(f"agent {agent_id!r} missing from {registry_path} (have {cache})")
-        return cache[agent_id]
-
-    return policy_mapping_fn
-
-
 def build_env_meta(obs_dim: int, nvec: Sequence[int], policies: Sequence[str]) -> dict:
     """The handshake facts the export step needs (written as env_meta.json, read by the .sh),
     so per-policy export never hardcodes dimensions."""
@@ -151,19 +136,9 @@ def write_env_meta(path, meta: dict) -> None:
     Path(path).write_text(json.dumps(meta, indent=2) + "\n")
 
 
-def ppo_config_overrides(cfg: RLlibPZConfig) -> dict:
-    """Same modest new-API-stack knobs as the #110 single-policy backend."""
-    return {
-        "framework": "torch",
-        "num_env_runners": 0,
-        "seed": cfg.seed,
-        "train_batch_size": 512,
-        "minibatch_size": 128,
-        "num_epochs": 4,
-        "lr": 2.5e-4,
-        "gamma": 0.99,
-        "entropy_coeff": 0.01,
-    }
+# PPO knobs are shared with the #110 single-policy backend — one definition, no drift
+# (train_rllib.ppo_config_overrides only reads cfg.seed, which RLlibPZConfig also carries).
+from train_rllib import ppo_config_overrides  # noqa: E402
 
 
 # --- Env wrapper (lazy factory, mirrors train_rllib.make_godot_env_cls) ---
@@ -176,10 +151,11 @@ def make_squeezed_env_cls(declared_policies: Sequence[str]):
     from godot_pettingzoo_env import GodotParallelEnv
 
     class SqueezedGodotParallelEnv(ParallelEnv):
-        """GodotParallelEnv with per-agent Dict obs -> Box and Tuple(Discrete) -> Discrete,
-        the shapes RLlib's default RLModule consumes. Writes agent_policies.json (for the
-        policy_mapping_fn) and env_meta.json (for the per-policy export step) into
-        config['run_dir'] — the env is the only place the wire handshake facts exist."""
+        """GodotParallelEnv with per-agent Dict obs -> Box and Tuple(Discrete) -> Discrete
+        (the shapes RLlib's default RLModule consumes), and agents renamed to
+        "<policy>_<index>" so identity travels in the id (policy_of == the mapping fn).
+        Writes env_meta.json (for the per-policy export step) into config['run_dir'] —
+        the env is the only place the wire handshake facts exist."""
 
         metadata = {"render_modes": [], "name": "SqueezedGodotParallelEnv"}
 
@@ -194,20 +170,22 @@ def make_squeezed_env_cls(declared_policies: Sequence[str]):
                         "speedup": int(cfg.get("speedup", 8))},
             )
             validate_policies(self._inner.agent_policy_names, declared_policies)
-            self.possible_agents = list(self._inner.possible_agents)
+            # Identity-carrying ids, positionally aligned with the inner adapter's int agents.
+            self.possible_agents = agent_ids_from_names(self._inner.agent_policy_names)
+            self._inner_id = {a: self._inner.possible_agents[i]
+                              for i, a in enumerate(self.possible_agents)}
             self.agents = self.possible_agents[:]
             self.observation_spaces = {
-                a: squeeze_obs_space(self._inner.observation_spaces[a]) for a in self.possible_agents}
+                a: squeeze_obs_space(self._inner.observation_spaces[self._inner_id[a]])
+                for a in self.possible_agents}
             self.action_spaces = {
-                a: squeeze_action_space(self._inner.action_spaces[a]) for a in self.possible_agents}
+                a: squeeze_action_space(self._inner.action_spaces[self._inner_id[a]])
+                for a in self.possible_agents}
             self._np = np
-            run_dir = cfg["run_dir"]
-            write_agent_policies(os.path.join(run_dir, "agent_policies.json"),
-                                 mapping_from_names(self._inner.agent_policy_names))
             first = self.possible_agents[0]
             meta = build_env_meta(int(self.observation_spaces[first].shape[0]),
                                   [int(self.action_spaces[first].n)], declared_policies)
-            write_env_meta(os.path.join(run_dir, "env_meta.json"), meta)
+            write_env_meta(os.path.join(cfg["run_dir"], "env_meta.json"), meta)
             print("env_meta:", meta)
 
         def observation_space(self, agent):
@@ -219,14 +197,20 @@ def make_squeezed_env_cls(declared_policies: Sequence[str]):
         def reset(self, seed=None, options=None):
             obs, infos = self._inner.reset(seed=seed, options=options)
             self.agents = self.possible_agents[:]
-            return {a: self._squeeze_obs(o) for a, o in obs.items()}, infos
+            return ({a: self._squeeze_obs(obs[self._inner_id[a]]) for a in self.possible_agents},
+                    {a: infos.get(self._inner_id[a], {}) for a in self.possible_agents})
 
         def step(self, actions):
             # Scalar Discrete -> the one-component action row the inner env scatters.
-            nested = {a: self._np.asarray([int(v)], dtype=self._np.int64) for a, v in actions.items()}
+            nested = {self._inner_id[a]: self._np.asarray([int(v)], dtype=self._np.int64)
+                      for a, v in actions.items()}
             obs, rewards, terminations, truncations, infos = self._inner.step(nested)
-            return ({a: self._squeeze_obs(o) for a, o in obs.items()},
-                    rewards, terminations, truncations, infos)
+            acted = [a for a in self.possible_agents if self._inner_id[a] in obs]
+            return ({a: self._squeeze_obs(obs[self._inner_id[a]]) for a in acted},
+                    {a: rewards[self._inner_id[a]] for a in acted},
+                    {a: terminations[self._inner_id[a]] for a in acted},
+                    {a: truncations[self._inner_id[a]] for a in acted},
+                    {a: infos.get(self._inner_id[a], {}) for a in acted})
 
         def close(self):
             self._inner.close()
@@ -250,12 +234,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     env_cls = make_squeezed_env_cls(cfg.policies)
 
     exp_dir = os.path.abspath(os.path.join(cfg.train_dir, cfg.experiment))
-    registry_path = os.path.join(exp_dir, "agent_policies.json")
     env_config = {"base_port": cfg.base_port, "speedup": cfg.speedup,
                   "action_repeat": cfg.action_repeat, "seed": cfg.seed,
                   "run_dir": exp_dir}
     register_env("godot_pettingzoo", lambda c: ParallelPettingZooEnv(env_cls(c)))
-    policy_mapping_fn = make_policy_mapping_fn(registry_path)
+    policy_mapping_fn = policy_of  # identity travels in the agent id — stateless
 
     ray.init(include_dashboard=False, ignore_reinit_error=True, num_cpus=2)
     config = (
@@ -297,7 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.makedirs(ckpt_dir, exist_ok=True)
     algo.save_to_path(ckpt_dir)
     print("checkpoint:", ckpt_dir)
-    # (env_meta.json + agent_policies.json were written by the env at construction.)
+    # (env_meta.json was written by the env at construction.)
 
     algo.stop()
     ray.shutdown()

@@ -13,7 +13,9 @@ func _ready() -> void:
 	super._ready()
 	_ray_sensor = get_node_or_null(ray_sensor_path)
 	if _ray_sensor == null:
-		push_warning("ChaseRaysAgent: ray_sensor_path not set — obs will be the 5 base floats only.")
+		# Fail LOUD: the shipped net expects 13 inputs; a silent 5-float obs would feed the ncnn
+		# runner a garbage-shaped input and just "behave badly" — a scene-configuration error.
+		push_error("ChaseRaysAgent: ray_sensor_path not set/invalid — obs will be 5 floats but the trained net expects 13. Fix the scene wiring.")
 
 
 func get_obs() -> Dictionary:

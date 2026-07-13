@@ -25,6 +25,21 @@ def register_snapshot(ledger: dict, name: str, rating=None) -> dict:
     return {"members": members, "learner_rating": learner}
 
 
+def register_snapshot_file(pool_dir, name: str, rating=None) -> dict:
+    """File-level registration (create-ledger-if-absent + register + write): THE one writer of
+    pool.json, shared by this CLI and the #189 mid-run freezer so the on-disk ledger contract has
+    a single definition. Returns the updated ledger."""
+    pool_dir = pathlib.Path(pool_dir)
+    pool_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = pool_dir / "pool.json"
+    ledger = {"members": {}, "learner_rating": DEFAULT_RATING}
+    if ledger_path.exists():
+        ledger = json.loads(ledger_path.read_text())
+    ledger = register_snapshot(ledger, name, rating)
+    ledger_path.write_text(json.dumps(ledger, indent=2))
+    return ledger
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -34,15 +49,9 @@ def main(argv=None) -> int:
     reg.add_argument("--rating", type=float, default=None)
     args = parser.parse_args(argv)
 
-    pool_dir = pathlib.Path(args.pool_dir)
-    pool_dir.mkdir(parents=True, exist_ok=True)
-    ledger_path = pool_dir / "pool.json"
-    ledger = {"members": {}, "learner_rating": DEFAULT_RATING}
-    if ledger_path.exists():
-        ledger = json.loads(ledger_path.read_text())
-    ledger = register_snapshot(ledger, args.name, args.rating)
-    ledger_path.write_text(json.dumps(ledger, indent=2))
-    print(f"registered '{args.name}' at rating {ledger['members'][args.name]['rating']} in {ledger_path}")
+    ledger = register_snapshot_file(args.pool_dir, args.name, args.rating)
+    print(f"registered '{args.name}' at rating {ledger['members'][args.name]['rating']} "
+          f"in {pathlib.Path(args.pool_dir) / 'pool.json'}")
     return 0
 
 

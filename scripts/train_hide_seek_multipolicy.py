@@ -118,7 +118,6 @@ def freeze_snapshot(agent, observation_dim: int, policy: str, update: int, pool_
     the same artifacts the alternating league (#29) produces per phase, so SelfPlayManager /
     pick_opponent consume this pool unchanged. The .pt intermediates are removed (the pool holds
     deploy ncnn only)."""
-    import json
     import pathlib
 
     import export_to_ncnn
@@ -135,12 +134,7 @@ def freeze_snapshot(agent, observation_dim: int, policy: str, update: int, pool_
     pt_path.unlink(missing_ok=True)
     pathlib.Path(str(pt_path) + ".shape.json").unlink(missing_ok=True)
 
-    ledger_path = pool_dir / "pool.json"
-    ledger = {"members": {}, "learner_rating": selfplay_phase.DEFAULT_RATING}
-    if ledger_path.exists():
-        ledger = json.loads(ledger_path.read_text())
-    ledger = selfplay_phase.register_snapshot(ledger, name)
-    ledger_path.write_text(json.dumps(ledger, indent=2))
+    ledger = selfplay_phase.register_snapshot_file(pool_dir, name)
     print(f"[snapshot] froze {name} into {pool_dir} (rating {ledger['members'][name]['rating']})")
 
 

@@ -55,6 +55,23 @@ static func inside_any_obstacle(pos: Vector2) -> bool:
 	return false
 
 
+# The physics boxes the RaycastSensor2D observes are spawned HERE from OBSTACLES (not hand-placed
+# in the .tscn), so one constant drives blocking, drawing, sensing AND the twin — a retuned layout
+# cannot leave stale StaticBody2D positions behind in a scene file.
+func _ready() -> void:
+	super._ready()
+	for rect in OBSTACLES:
+		var body := StaticBody2D.new()
+		body.collision_layer = 1
+		body.position = rect.get_center()
+		var shape := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = rect.size
+		shape.shape = rs
+		body.add_child(shape)
+		add_child(body)
+
+
 func move_agent(velocity: Vector2, delta: float) -> void:
 	if _agent_body != null:
 		_agent_body.position = resolve_obstacles(
