@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="Script" path="res://examples/rover_3d/rover_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/rover_3d/rover_agent.gd" id="2"]
@@ -7,16 +7,36 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="6"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+[ext_resource type="Shader" path="res://examples/rover_3d/rover_ground_grid.gdshader" id="grid"]
 
 [sub_resource type="BoxShape3D" id="Box"]
 size = Vector3(4, 2, 4)
 
-[sub_resource type="StandardMaterial3D" id="GroundMaterial"]
-albedo_color = Color(0.12, 0.2, 0.14, 1)
-roughness = 0.9
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.28, 0.42, 0.6, 1)
+sky_horizon_color = Color(0.55, 0.6, 0.62, 1)
+ground_bottom_color = Color(0.12, 0.14, 0.13, 1)
+ground_horizon_color = Color(0.4, 0.44, 0.44, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+ambient_light_energy = 0.6
+tonemap_mode = 2
+
+[sub_resource type="ShaderMaterial" id="GroundGridMat"]
+shader = ExtResource("grid")
+shader_parameter/base_color = Color(0.1, 0.17, 0.12, 1)
+shader_parameter/line_color = Color(0.22, 0.38, 0.3, 1)
+shader_parameter/cells = 20.0
+shader_parameter/line_width = 0.03
 
 [sub_resource type="BoxMesh" id="GroundMesh"]
-material = SubResource("GroundMaterial")
+material = SubResource("GroundGridMat")
 size = Vector3(40, 0.2, 40)
 
 [sub_resource type="StandardMaterial3D" id="RoverMaterial"]
@@ -26,19 +46,92 @@ roughness = 0.55
 
 [sub_resource type="BoxMesh" id="RoverMesh"]
 material = SubResource("RoverMaterial")
-size = Vector3(1.8, 0.8, 2.6)
+size = Vector3(1.8, 0.7, 2.4)
+
+[sub_resource type="StandardMaterial3D" id="DeckMaterial"]
+albedo_color = Color(0.55, 0.62, 0.72, 1)
+metallic = 0.4
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="DeckMesh"]
+material = SubResource("DeckMaterial")
+size = Vector3(1.45, 0.22, 1.9)
+
+[sub_resource type="StandardMaterial3D" id="WheelMaterial"]
+albedo_color = Color(0.08, 0.08, 0.09, 1)
+metallic = 0.1
+roughness = 0.85
+
+[sub_resource type="CylinderMesh" id="WheelMesh"]
+material = SubResource("WheelMaterial")
+top_radius = 0.38
+bottom_radius = 0.38
+height = 0.24
+
+[sub_resource type="StandardMaterial3D" id="MastMaterial"]
+albedo_color = Color(0.25, 0.27, 0.3, 1)
+metallic = 0.5
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="MastMesh"]
+material = SubResource("MastMaterial")
+top_radius = 0.06
+bottom_radius = 0.07
+height = 0.55
+
+[sub_resource type="BoxMesh" id="HeadMesh"]
+material = SubResource("MastMaterial")
+size = Vector3(0.36, 0.26, 0.32)
+
+[sub_resource type="StandardMaterial3D" id="LensMaterial"]
+albedo_color = Color(0.2, 0.9, 1, 1)
+emission_enabled = true
+emission = Color(0.1, 0.6, 0.75, 1)
+emission_energy_multiplier = 2.5
+
+[sub_resource type="SphereMesh" id="LensMesh"]
+material = SubResource("LensMaterial")
+radius = 0.1
+height = 0.2
+radial_segments = 12
+rings = 6
 
 [sub_resource type="StandardMaterial3D" id="GoalMaterial"]
 albedo_color = Color(0.25, 0.95, 0.35, 1)
 emission_enabled = true
-emission = Color(0.08, 0.45, 0.12, 1)
-emission_energy_multiplier = 1.5
+emission = Color(0.12, 0.7, 0.2, 1)
+emission_energy_multiplier = 2.5
 
 [sub_resource type="CylinderMesh" id="GoalMesh"]
 material = SubResource("GoalMaterial")
-top_radius = 0.7
-bottom_radius = 0.7
-height = 1.5
+top_radius = 0.42
+bottom_radius = 0.42
+height = 3.0
+
+[sub_resource type="StandardMaterial3D" id="GoalDiscMaterial"]
+albedo_color = Color(0.2, 0.9, 0.35, 1)
+emission_enabled = true
+emission = Color(0.1, 0.6, 0.2, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="CylinderMesh" id="GoalDiscMesh"]
+material = SubResource("GoalDiscMaterial")
+top_radius = 1.3
+bottom_radius = 1.3
+height = 0.12
+
+[sub_resource type="StandardMaterial3D" id="GoalBeamMaterial"]
+transparency = 1
+albedo_color = Color(0.35, 1, 0.5, 0.13)
+emission_enabled = true
+emission = Color(0.2, 0.9, 0.35, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="CylinderMesh" id="GoalBeamMesh"]
+material = SubResource("GoalBeamMaterial")
+top_radius = 0.16
+bottom_radius = 0.18
+height = 14.0
 
 [sub_resource type="StandardMaterial3D" id="ObstacleMaterial"]
 albedo_color = Color(0.75, 0.3, 0.16, 1)
@@ -53,6 +146,9 @@ script = ExtResource("1")
 agent_body_path = NodePath("AgentBody")
 goal_path = NodePath("Goal")
 obstacles_path = NodePath("Obstacles")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
 
 [node name="Ground" type="MeshInstance3D" parent="."]
 position = Vector3(20, -0.1, 20)
@@ -75,8 +171,44 @@ max_distance = 25.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 6)
 
 [node name="RoverMesh" type="MeshInstance3D" parent="AgentBody"]
-position = Vector3(0, 0.4, 0)
+position = Vector3(0, 0.45, 0)
 mesh = SubResource("RoverMesh")
+
+[node name="Deck" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0, 0.88, 0)
+mesh = SubResource("DeckMesh")
+
+[node name="WheelFL" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(-0.9, 0.38, 0.85)
+rotation_degrees = Vector3(0, 0, 90)
+mesh = SubResource("WheelMesh")
+
+[node name="WheelFR" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0.9, 0.38, 0.85)
+rotation_degrees = Vector3(0, 0, 90)
+mesh = SubResource("WheelMesh")
+
+[node name="WheelBL" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(-0.9, 0.38, -0.85)
+rotation_degrees = Vector3(0, 0, 90)
+mesh = SubResource("WheelMesh")
+
+[node name="WheelBR" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0.9, 0.38, -0.85)
+rotation_degrees = Vector3(0, 0, 90)
+mesh = SubResource("WheelMesh")
+
+[node name="Mast" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0, 1.18, 0.55)
+mesh = SubResource("MastMesh")
+
+[node name="SensorHead" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0, 1.48, 0.55)
+mesh = SubResource("HeadMesh")
+
+[node name="SensorLens" type="MeshInstance3D" parent="AgentBody"]
+position = Vector3(0, 1.48, 0.73)
+mesh = SubResource("LensMesh")
 
 [node name="RaycastSensor3D" type="Node3D" parent="AgentBody"]
 script = ExtResource("3")
@@ -90,9 +222,17 @@ collision_mask = 1
 [node name="Goal" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34, 0, 34)
 
+[node name="GoalDisc" type="MeshInstance3D" parent="Goal"]
+position = Vector3(0, 0.07, 0)
+mesh = SubResource("GoalDiscMesh")
+
 [node name="GoalMesh" type="MeshInstance3D" parent="Goal"]
-position = Vector3(0, 0.75, 0)
+position = Vector3(0, 1.5, 0)
 mesh = SubResource("GoalMesh")
+
+[node name="GoalBeam" type="MeshInstance3D" parent="Goal"]
+position = Vector3(0, 7, 0)
+mesh = SubResource("GoalBeamMesh")
 
 [node name="Obstacles" type="Node3D" parent="."]
 
@@ -153,4 +293,4 @@ script = ExtResource("5")
 
 [node name="DemoLegend" type="CanvasLayer" parent="."]
 script = ExtResource("legend")
-lines = PackedStringArray("BLUE box = rover (RL agent)", "GREEN pillar = goal   ORANGE boxes = obstacles")
+lines = PackedStringArray("BLUE rover = RL agent", "GREEN beacon = goal   ORANGE boxes = obstacles")
