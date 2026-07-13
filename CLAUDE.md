@@ -336,6 +336,16 @@ godot_rl v0.8.2-compatible. **Architecture + data flow + deploy contract:
   ~2200 steps/s) deploys against real casts and catches 15+/1800 frames
   (`trained_chase_rays_scene.tscn`; play scene `chase_rays.tscn`, in the launcher). Honest limit:
   only analytic shapes (AABB/circle) twin exactly — Jolt physics envs have no analytic form (#60).
+  **JAX batch twin (#361):** `./scripts/train_chase_jax.sh` — the twin's step/obs/reward ported to
+  JAX (`scripts/chase_twin_jax.py`, `batched_step` = one jit kernel over the whole env batch;
+  numerical parity with the NumPy twin unit-tested) + a PureJaxRL-style single-file PPO
+  (`train_chase_jax.py`: scan rollouts, GAE, minibatch updates — all jit). Measured **~104k
+  env-steps/s on CPU at batch 128** (1M steps in 9.6 s; ~47× the NumPy twin's ~2.2k, ~3 orders of
+  magnitude past the wire bridge; same code runs unchanged on GPU). Deploy: flax params →
+  weight-copied torch MLP (unit-tested parity seam `params_to_torch_actor`) → TorchScript →
+  `export_to_ncnn.py`; the committed net catches 18/1800 frames in the real engine
+  (`trained_chase_jax_scene.tscn` — deploy needs NO jax). Opt-in dep: `.venv-train/bin/pip install
+  -r requirements-jax.txt` (jax/flax/optax; guarded trainer smoke, like tune/hub).
 - **Tune hyperparameters (Optuna):** `./scripts/tune_optuna.sh` — an Optuna PPO HP search over an
   example via the godot-rl bridge (#113, godot_rl parity). Each trial samples a PPO HP set, runs a
   short training trial, and reports `ep_rew_mean` (maximized); prints + writes the best set to

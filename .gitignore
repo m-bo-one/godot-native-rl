@@ -85,6 +85,7 @@ models/hide_seek_*.pt.shape.json
 models/chase_twin.zip
 models/chase_rays_twin.zip
 models/chase_rays_twin.ncnn.*
+models/chase_jax_twin.ncnn.*
 # Coop MA-POCA training artifacts (deploy net lives in examples/coop_collect/models/)
 models/coop_mapoca.zip
 models/coop_mapoca.pt
