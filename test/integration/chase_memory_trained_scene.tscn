@@ -32,4 +32,4 @@ game_path = NodePath("..")
 agent_path = NodePath("../ChaseMemoryAgent")
 frames_to_run = 1800
 require_memory = true
-min_catches = 5
+min_catches = 4

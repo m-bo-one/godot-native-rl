@@ -214,7 +214,7 @@ C++ runner (needs a `PIXEL_GRAY` path in `NcnnRunner`).
 | VecNormalize obs parity | ❌ | ✅ item 24 | **Advantage** |
 | INT8 quantization | ❌ | ✅ item 13 | **Advantage** |
 | TorchScript → ncnn export | ❌ | ✅ item 33 | **Advantage** |
-| Recurrent / LSTM deploy | ❌ | ✅ item 22 | **Advantage** (deploy; training/export pending #33) |
+| Recurrent / LSTM deploy | ⚠️ training example only (SB3-contrib PPO-LSTM, their PR #257 — no deploy story) | ✅ item 22 + #378 (train → export → native recurrent deploy + memory-ablation regression) | **Advantage** (full loop; upstream has no LSTM deploy) |
 | Batched multi-agent inference | ❌ | ✅ `run_inference_batch` (thread-parallel) + `CrowdController` + `chase_crowd` | **Advantage** (#34) |
 
 ---
@@ -257,7 +257,7 @@ C++ runner (needs a `PIXEL_GRAY` path in `NcnnRunner`).
 | ✅ Done | `INHERIT_FROM_SYNC` — already wired in `NcnnSync._get_agents()` | — |
 | ✅ Done | `RaycastSensor3D` (and 2D) multi-class detection mode (`class_sensor`) | #42 |
 | ✅ Done | `RECORD_EXPERT_DEMOS` + demo infra — `gnrl_v1`/`godot_rl` formats, Python loader + `train_bc.py`, chase scripted-expert | #13 |
-| ✅ Done | Recurrent / LSTM **deploy** (hidden-state carry; training/export still pending) | #33 |
+| ✅ Done | Recurrent / LSTM **deploy** (hidden-state carry) + real RecurrentPPO train/export (#378 memory chase) | #33 |
 | ✅ Done | `SBGSingleObsEnv` + SB3 SAC continuous training — BallChase example, live-trained non-PPO regression | #74 |
 | ✅ Done | Multi-policy trained example (custom single-file PPO, seeker+hider, item 45) | #26 partial |
 | ✅ Done | Asset Library release + web/WASM GDExtension — prebuilt binaries on all platforms, EditorExportPlugin auto-packs models | #32 |
