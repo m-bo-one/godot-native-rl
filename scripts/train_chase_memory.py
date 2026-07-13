@@ -13,6 +13,7 @@ import pathlib
 import sys
 
 from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
@@ -34,6 +35,10 @@ def main() -> None:
                         help="where the ncnn deploy artifacts land")
     parser.add_argument("--skip_export", action="store_true",
                         help="save the SB3 zip only (export separately via export_recurrent_ppo.py)")
+    parser.add_argument("--checkpoint_freq", type=int, default=50_000,
+                        help="env-steps between .zip snapshots (0 disables) — a died run still "
+                             "yields a trainable/exportable net")
+    parser.add_argument("--checkpoint_dir", type=str, default="models/chase_memory_checkpoints")
     args = parser.parse_args()
 
     env = StableBaselinesGodotEnv(
@@ -62,7 +67,13 @@ def main() -> None:
         ),
         tensorboard_log="logs/sb3",
     )
-    model.learn(args.timesteps)
+    callbacks = None
+    if args.checkpoint_freq > 0:
+        # CheckpointCallback's save_freq counts per-env calls; divide so the cadence is env-steps.
+        callbacks = CheckpointCallback(
+            save_freq=max(args.checkpoint_freq // env.num_envs, 1),
+            save_path=args.checkpoint_dir, name_prefix="chase_memory_ckpt")
+    model.learn(args.timesteps, callback=callbacks)
 
     zip_path = pathlib.Path(args.save_model_path).with_suffix(".zip")
     zip_path.parent.mkdir(parents=True, exist_ok=True)

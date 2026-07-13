@@ -17,11 +17,14 @@ BASE_PORT="${BASE_PORT:-11008}"
 SCENE="${SCENE:-res://examples/chase_the_target/chase_memory_train_parallel.tscn}"
 SAVE_MODEL_PATH="${SAVE_MODEL_PATH:-models/chase_memory.zip}"
 OUTDIR="${OUTDIR:-models}"
+CKPT_DIR="${CKPT_DIR:-models/chase_memory_checkpoints}"
+CHECKPOINT_FREQ="${CHECKPOINT_FREQ:-50000}"
 
 echo "Starting RecurrentPPO trainer (timesteps=$TIMESTEPS)..."
 "$PY" scripts/train_chase_memory.py --timesteps "$TIMESTEPS" --speedup "$SPEEDUP" \
 	--action_repeat "$ACTION_REPEAT" --n_steps "$N_STEPS" \
-	--save_model_path "$SAVE_MODEL_PATH" --outdir "$OUTDIR" &
+	--save_model_path "$SAVE_MODEL_PATH" --outdir "$OUTDIR" \
+	--checkpoint_freq "$CHECKPOINT_FREQ" --checkpoint_dir "$CKPT_DIR" &
 TRAINER_PID=$!
 
 # Launch Godot only once the trainer's server port is bound (listen-poll, #12/#286 startup-race
