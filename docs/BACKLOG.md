@@ -486,11 +486,14 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     (`atol 1e-2`) and reset-reproduction; pnnx confirmed to preserve the LSTM's 3-in/3-out state
     blobs. **C++ ABI changed → rebuild the extension** (`template_debug` + `template_release`; `bin/`
     gitignored). See docs/dev/DEVELOPMENT.md "The recurrent deploy contract".
-    **Deferred:** real `RecurrentPPO` (sb3-contrib) training + a trained recurrent example; general
-    export tooling that emits the sidecar from an arbitrary trained model (only a synthetic fixture
-    here); image-obs + recurrent (float-obs path only); batched multi-agent **recurrent** inference
-    (item 23 / #34 shipped non-recurrent batched crowd inference — batched recurrent remains a future
-    follow-up).
+    **Deferred (since closed by #378, 2026-07-13):** real `RecurrentPPO` (sb3-contrib) training +
+    a trained recurrent example + general export tooling — the **memory chase** (blinking-target
+    chase; `train_chase_memory.sh` + `export_recurrent_ppo.py` emits the sidecar from any
+    single-layer-LSTM RecurrentPPO checkpoint) ships a trained net deployed through the native
+    hidden-state carry, gated by a memory-ablation regression (7–11 catches with memory vs 0 with
+    the state zeroed per decision). Still open by design: image-obs + recurrent (float-obs path
+    only); batched multi-agent **recurrent** inference (item 23 / #34 shipped non-recurrent
+    batched crowd inference — batched recurrent remains a future follow-up).
 23. ✅ **Batched multi-agent inference** — `NcnnRunner.run_inference_batch(inputs, num_threads)` runs N
     agents' forward passes in one C++ call, fanned across `std::thread` workers (the Net's `opt.num_threads`
     is pinned to 1 for the call so each worker's Extractor is single-threaded — no nested OpenMP; serial

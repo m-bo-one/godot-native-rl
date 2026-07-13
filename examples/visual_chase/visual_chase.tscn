@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://examples/chase_the_target/chase_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/visual_chase/visual_chase_agent.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="4"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/fit_camera_2d.gd" id="fitcam2d"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+[ext_resource type="Script" path="res://examples/visual_chase/visual_chase_inset.gd" id="inset"]
 
 [node name="ChaseGame" type="Node2D"]
 script = ExtResource("1")
@@ -23,6 +24,10 @@ control_mode = 3
 model_param_path = "res://examples/visual_chase/models/visual_chase.ncnn.param"
 model_bin_path = "res://examples/visual_chase/models/visual_chase.ncnn.bin"
 
+[node name="CameraInset" type="CanvasLayer" parent="."]
+script = ExtResource("inset")
+agent_path = NodePath("../Agent")
+
 [node name="Sync" type="Node" parent="."]
 script = ExtResource("3")
 control_mode = 2
@@ -36,4 +41,4 @@ world_rect = Rect2(0, 0, 1000, 600)
 
 [node name="DemoLegend" type="CanvasLayer" parent="."]
 script = ExtResource("legend")
-lines = PackedStringArray("CYAN = agent   RED = target", "policy sees ONLY a 36x36 rasterized frame (CNN)")
+lines = PackedStringArray("CYAN = agent   RED = target", "policy sees ONLY a 36x36 rasterized frame (CNN)", "inset (top-right) = exactly what the CNN sees")

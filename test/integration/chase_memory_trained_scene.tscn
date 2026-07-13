@@ -1,0 +1,35 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_game.gd" id="1"]
+[ext_resource type="Script" path="res://examples/chase_the_target/chase_memory_agent.gd" id="2"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="3"]
+[ext_resource type="Script" path="res://test/integration/chase_memory_checker.gd" id="4"]
+
+[node name="ChaseMemoryGame" type="Node2D"]
+script = ExtResource("1")
+agent_body_path = NodePath("AgentBody")
+target_path = NodePath("Target")
+
+[node name="AgentBody" type="Node2D" parent="."]
+
+[node name="Target" type="Node2D" parent="."]
+
+[node name="ChaseMemoryAgent" type="Node2D" parent="."]
+script = ExtResource("2")
+game_path = NodePath("..")
+control_mode = 3
+model_param_path = "res://examples/chase_the_target/models/chase_memory.ncnn.param"
+model_bin_path = "res://examples/chase_the_target/models/chase_memory.ncnn.bin"
+recurrent_stats_path = "res://examples/chase_the_target/models/chase_memory.recurrent.json"
+
+[node name="Sync" type="Node" parent="."]
+script = ExtResource("3")
+control_mode = 2
+
+[node name="TrainedChecker" type="Node" parent="."]
+script = ExtResource("4")
+game_path = NodePath("..")
+agent_path = NodePath("../ChaseMemoryAgent")
+frames_to_run = 1800
+require_memory = true
+min_catches = 4

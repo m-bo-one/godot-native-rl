@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://examples/quadruped_walk/quadruped_game.gd" id="1"]
 [ext_resource type="Script" path="res://examples/quadruped_walk/quadruped_agent.gd" id="2"]
@@ -7,6 +7,23 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/debug/policy_debug_overlay.gd" id="5"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="6"]
 [ext_resource type="Script" path="res://examples/quadruped_walk/ground_markers.gd" id="7"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.28, 0.42, 0.6, 1)
+sky_horizon_color = Color(0.55, 0.6, 0.62, 1)
+ground_bottom_color = Color(0.12, 0.14, 0.13, 1)
+ground_horizon_color = Color(0.4, 0.44, 0.44, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+ambient_light_energy = 0.75
+tonemap_mode = 2
 
 [sub_resource type="BoxShape3D" id="GroundShape"]
 size = Vector3(80, 1, 80)
@@ -28,6 +45,9 @@ emission = Color(0.6, 0.5, 0.1, 1)
 [node name="Game" type="Node3D"]
 script = ExtResource("1")
 finish_path = NodePath("Finish")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
 
 [node name="GroundMarkers" type="Node3D" parent="."]
 script = ExtResource("7")
@@ -83,3 +103,7 @@ game_path = NodePath("../..")
 
 [node name="PolicyDebugOverlay" type="CanvasLayer" parent="."]
 script = ExtResource("5")
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("ORANGE/TEAL quadruped = RL agent (native ncnn)", "YELLOW line = finish (40 m)")

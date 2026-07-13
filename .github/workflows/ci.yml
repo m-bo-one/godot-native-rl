@@ -230,7 +230,7 @@ jobs:
           path: |
             .venv
             .venv-train
-          key: venvs-${{ runner.os }}-py314-py312-${{ hashFiles('requirements-convert.txt', 'requirements-train.txt', '.github/ci-constraints.txt') }}-${{ env.CACHE_VERSION }}
+          key: venvs-${{ runner.os }}-py314-py312-${{ hashFiles('requirements-convert.txt', 'requirements-train.txt', 'requirements-recurrent.txt', '.github/ci-constraints.txt') }}-${{ env.CACHE_VERSION }}
 
       - name: Create venvs
         if: steps.cache-venvs.outputs.cache-hit != 'true'
@@ -257,6 +257,9 @@ jobs:
           .venv-train/bin/pip install --upgrade pip
           .venv-train/bin/pip install --index-url "$TORCH_CPU_INDEX" torch
           .venv-train/bin/pip install -c .github/ci-constraints.txt -r requirements-train.txt
+          # sb3-contrib (#378 RecurrentPPO) is a tiny pure-python wheel on top of the SB3 already
+          # here — unlike ray/skrl it costs nothing, so CI exercises the recurrent trainer smoke.
+          .venv-train/bin/pip install -c .github/ci-constraints.txt -r requirements-recurrent.txt
           .venv-train/bin/pip install --no-deps "godot-rl==0.8.2"
 
       - name: Download Godot ${{ matrix.godot.version }} (headless)

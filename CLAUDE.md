@@ -330,6 +330,28 @@ term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot
   gotchas: `PPO_CFG` dataclass (v1's dict is gone) and `Model.compute` is called **positionally**
   — define `compute(self, inputs, role="")`. `TIMESTEPS`/`ROLLOUTS`/`BASE_PORT`/`OUTDIR`/`SCENE`
   overrides.
+- **Train (memory chase, RecurrentPPO/LSTM):** `./scripts/train_chase_memory.sh` (#378 — closes
+  item 22's deferred half) — sb3-contrib **RecurrentPPO** over the partially-observable **memory
+  chase**: the target's obs slots BLINK out (visible 2 decisions / hidden 6 + a visible flag;
+  agent pos always observed — `chase_memory_obs.gd`), so the LSTM must REMEMBER the target and
+  integrate its own motion while blind. 8-world `chase_memory_train_parallel.tscn` (pins
+  `read_timeout_sec=300` — a slow RecurrentPPO update phase under CPU contention outlived the
+  60s default and killed a run; + 50k-step checkpoints via `CHECKPOINT_FREQ`/`CKPT_DIR`). Export
+  = `scripts/export_recurrent_ppo.py`: the actor (lstm_actor→policy_net→action_net) wrapped as
+  `(obs,h,c)→(out,h',c')`, legacy ONNX→pnnx→ncnn — pnnx keeps the LSTM state blobs as
+  `in1/in2→out1/out2`, the EXACT item-22 `recurrent.json` contract, so deploy needed zero
+  changes; single-layer LSTM only (fails loud); verifies **carried-sequence** torch↔ncnn parity
+  (single-step can't see a broken state loop). Opt-in add-on `requirements-recurrent.txt`
+  (tiny; CI installs it → the guarded smoke runs there). The shipped 400k net catches **7–11
+  /1800 frames**; the **memory-is-load-bearing regression** runs the SAME net with
+  `ablate_memory=true` (state zeroed before every decision) and it catches **0** —
+  `chase_memory_{trained,ablated}_scene.tscn`. Deploy demo `chase_memory.tscn` (blinking
+  target; faint ring = hidden from the policy), in the launcher. `TIMESTEPS`/`N_STEPS`/
+  `SPEEDUP`/`ACTION_REPEAT`/`SAVE_MODEL_PATH`/`OUTDIR`/`SCENE` overrides. **Gotcha
+  (gotchas.md): `ncnn.Mat(numpy)` ALIASES the buffer + python extraction is lazy — keep every
+  input array referenced past `extract()`, or state blobs silently read reused memory** (a
+  convincing converter-bug decoy: single-step parity exact, carried-state "failing" ~0.3; the
+  C++ extension was never wrong).
 - **Train (chase, NumPy twin — NO Godot, NO socket):** `./scripts/train_chase_twin.sh` (#37) — SB3 PPO
   over `scripts/chase_twin_env.py`, a pure-NumPy Gymnasium **twin** of the chase env that reproduces
   the Godot dynamics EXACTLY (obs byte-identical to `ChaseObs`; `action_repeat=8` sub-frames at Δt=1/60
@@ -543,8 +565,8 @@ daily:
     43 (stochastic action sampling — `deterministic_inference`/`inference_seed` on controllers,
     discrete softmax-sample via seedable RNG in core),
     22 (recurrent/LSTM deploy — `NcnnRunner.run_inference_multi` multi-IO + `NcnnControllerCore`
-    hidden-state carry + `recurrent.json` sidecar; synthetic-LSTM golden; real RecurrentPPO
-    train/export deferred),
+    hidden-state carry + `recurrent.json` sidecar; synthetic-LSTM golden; the deferred real
+    RecurrentPPO train/export half closed by #378, see the memory-chase entry below),
     10 (expert-demo recording — pure `DemoRecorder` + `NcnnSync` `RECORD_EXPERT_DEMOS` mode,
     `gnrl_v1`/`godot_rl` formats, Python loader + `train_bc.py` BC trainer, chase scripted-expert
     example + committed sample + headless smoke),

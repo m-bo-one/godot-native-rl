@@ -36,6 +36,8 @@ models/chase_policy.*
 models/chase_partial.*
 models/chase_partial_ckpts/
 models/rover_checkpoints/
+models/chase_memory_checkpoints/
+models/chase_memory.*
 # Self-play league artifacts (#29): pools of frozen snapshots + ELO ledgers + phase temps
 models/selfplay_pool/
 models/selfplay_tmp/

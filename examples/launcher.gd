@@ -14,6 +14,7 @@ const DEMOS := [
 	["res://examples/chase_the_target/chase_the_target_debug.tscn", "Live Policy Swap (Chase)", "Hot-swap fully- vs partially-trained nets from a dropdown — see the learning gradient, same scene, native ncnn, no Python (F3 for obs/actions)."],
 	["res://examples/seek_target/seek_target.tscn", "Seek & Avoid (sensor-only)", "Reach the goal, dodge the patrolling hazard — obs is ONE RelativePositionSensor2D; net trained in-engine by CMA-ES."],
 	["res://examples/chase_the_target/chase_rays.tscn", "Chase with Obstacles (NumPy-trained)", "Trained 100% OUTSIDE the engine (analytic-ray twin, #364); deployed vs real physics raycasts."],
+	["res://examples/chase_the_target/chase_memory.tscn", "Memory Chase (LSTM)", "The target BLINKS out of the observation — a RecurrentPPO LSTM keeps homing from MEMORY while blind (#378)."],
 	["res://examples/rover_3d/rover_3d.tscn", "Rover (3D)", "Discrete-action 3D rover navigating to a goal."],
 	["res://examples/ball_chase/ball_chase.tscn", "Ball Chase (2D, SAC)", "Continuous-control agent chases a ball (Soft Actor-Critic)."],
 	["res://examples/fly_by/fly_by.tscn", "Fly By (3D, PPO)", "Continuous-control plane (pitch/turn), DiagGaussian sampling."],

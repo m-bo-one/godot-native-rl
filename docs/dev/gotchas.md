@@ -159,6 +159,19 @@ subclass ncnn classes in the extension). Lesson: never assume a from-memory mode
 its input — check the reader for zero-copy `reference()` support, and pin the source to the
 consumer's lifetime, minding member destruction order.
 
+**The same aliasing bites the PYTHON binding (#378):** `ncnn.Mat(numpy_array)` wraps the numpy
+buffer zero-copy, and `Extractor` execution is LAZY — the graph runs at `extract()`, not at
+`input()`. Passing temporaries (`ex.input("in1", ncnn.Mat(h.copy()))`) frees each buffer
+immediately; the allocator then reuses in1's dead block for in2's same-size temp, so the LSTM
+read the CELL data as the hidden state. Symptom was a convincing decoy: single-step/zero-state
+parity EXACT (freed memory still held the zeros), multi-step carried-state parity "failing" at
+0.3 — looking exactly like a converter bug. The deploy extension was never wrong; three layers
+of ncnn source read clean before the verifier itself was suspected. Fix: bind every input Mat
+to a named variable that stays referenced until after ALL `extract()` calls
+(`scripts/export_recurrent_ppo.py`, `scripts/make_synthetic_lstm.py`). Lesson: when a
+verifier disagrees with a runtime you've source-audited, audit the verifier's memory lifetimes
+— and never hand `ncnn.Mat` a temporary.
+
 ## Position-based rewards must use TILE-LOCAL coordinates under ParallelArena
 
 `ParallelArena` isolates the N training worlds spatially — it tiles them hundreds of units apart on

@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 ; Deploy demo for the SOLID-hurdle jumping gait (#286): the trained net runs the solid-hurdle course
 ; and must LEAP the physically-solid walls (it can't pass through). Hurdles match the training "tall"
@@ -11,6 +11,23 @@
 [ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="5"]
 [ext_resource type="Script" path="res://examples/quadruped_walk/quadruped_hud.gd" id="6"]
 [ext_resource type="Script" path="res://addons/godot_native_rl/camera/orbit_camera.gd" id="8"]
+[ext_resource type="Script" path="res://addons/godot_native_rl/debug/demo_legend.gd" id="legend"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.28, 0.42, 0.6, 1)
+sky_horizon_color = Color(0.55, 0.6, 0.62, 1)
+ground_bottom_color = Color(0.12, 0.14, 0.13, 1)
+ground_horizon_color = Color(0.4, 0.44, 0.44, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+ambient_light_energy = 0.75
+tonemap_mode = 2
 
 [sub_resource type="BoxShape3D" id="GroundShape"]
 size = Vector3(80, 1, 80)
@@ -24,6 +41,9 @@ albedo_color = Color(0.22, 0.42, 0.27, 1)
 [node name="Game" type="Node3D"]
 script = ExtResource("1")
 finish_path = NodePath("Finish")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
 
 [node name="Ground" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
@@ -86,3 +106,7 @@ offset_left = 16.0
 offset_top = 16.0
 script = ExtResource("6")
 game_path = NodePath("../..")
+
+[node name="DemoLegend" type="CanvasLayer" parent="."]
+script = ExtResource("legend")
+lines = PackedStringArray("ORANGE/TEAL quadruped = RL agent", "RED walls = SOLID hurdles it must leap   YELLOW line = finish")

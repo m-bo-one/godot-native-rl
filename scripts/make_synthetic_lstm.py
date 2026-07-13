@@ -118,13 +118,20 @@ def main() -> int:
     c_n = np.zeros(HIDDEN, dtype=np.float32)
     max_diff = 0.0
     for step in ref_steps:
+        # GOTCHA (#378): ncnn.Mat(np_array) ALIASES the numpy buffer and extraction is lazy —
+        # keep the arrays referenced until after extract(), or freed temporaries get reused
+        # across input blobs (the LSTM then reads the cell data as the hidden state).
+        obs_buf = np.array(step["obs"], dtype=np.float32).reshape(OBS_SHAPE).copy()
+        h_buf = h_n.reshape(STATE_SHAPE).copy()
+        c_buf = c_n.reshape(STATE_SHAPE).copy()
         ex = net.create_extractor()
-        ex.input("in0", ncnn.Mat(np.array(step["obs"], dtype=np.float32).reshape(OBS_SHAPE).copy()))
-        ex.input("in1", ncnn.Mat(h_n.reshape(STATE_SHAPE).copy()))
-        ex.input("in2", ncnn.Mat(c_n.reshape(STATE_SHAPE).copy()))
+        ex.input("in0", ncnn.Mat(obs_buf))
+        ex.input("in1", ncnn.Mat(h_buf))
+        ex.input("in2", ncnn.Mat(c_buf))
         _, out0 = ex.extract("out0")
         _, out1 = ex.extract("out1")
         _, out2 = ex.extract("out2")
+        del obs_buf, h_buf, c_buf  # lifetime explicitly covers the extract calls above
         logits_ncnn = np.array(out0).reshape(-1)
         h_n = np.array(out1, dtype=np.float32).reshape(-1)
         c_n = np.array(out2, dtype=np.float32).reshape(-1)

@@ -68,6 +68,14 @@ echo "== Trained chase JAX twin check: jit-batch-trained net deploys back (headl
 # Deploy needs NO jax — the committed net is ordinary ncnn; only the trainer needs the add-on.
 "$GODOT" --headless --path . res://test/integration/trained_chase_jax_scene.tscn
 
+echo "== Trained MEMORY chase check: RecurrentPPO LSTM through the native recurrent path (headless, #378) =="
+# Deploy needs NO sb3-contrib — the committed net is ordinary multi-IO ncnn + recurrent.json.
+"$GODOT" --headless --path . res://test/integration/chase_memory_trained_scene.tscn
+
+echo "== Memory ABLATION check: same net, hidden state zeroed per decision, must catch less (#378) =="
+# The memory-is-load-bearing proof: same weights, same graph — only the carried state differs.
+"$GODOT" --headless --path . res://test/integration/chase_memory_ablated_scene.tscn
+
 echo "== Launcher runtime check: change_scene_to_file initializes Sync (#239, headless) =="
 "$GODOT" --headless --path . res://test/integration/launcher_runtime_scene.tscn
 
@@ -283,6 +291,24 @@ if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import skrl" >/de
 	echo "SKRL smoke OK."
 else
 	echo "SKIP: skrl not installed in .venv-train (run scripts/setup_training.sh to enable the SKRL smoke)."
+fi
+
+echo "== RecurrentPPO memory-chase smoke (skipped if sb3-contrib not installed in .venv-train) =="
+# #378: tiny PPO-LSTM run over the blinking-target env + LSTM-actor export. The exporter gates on
+# carried-sequence torch-vs-ncnn parity internally, so artifact presence implies parity passed.
+# Deploy-side correctness is gated separately by the always-on chase_memory regressions above.
+if [ -x .venv-train/bin/python ] && .venv-train/bin/python -c "import sb3_contrib" >/dev/null 2>&1; then
+	RECURRENT_TMP="$(mktemp -d)"
+	TIMESTEPS="${RECURRENT_SMOKE_TIMESTEPS:-2048}" N_STEPS=64 \
+	SAVE_MODEL_PATH="$RECURRENT_TMP/chase_memory_smoke.zip" OUTDIR="$RECURRENT_TMP" \
+		./scripts/train_chase_memory.sh
+	for f in chase_memory_smoke.ncnn.param chase_memory_smoke.ncnn.bin chase_memory_smoke.recurrent.json; do
+		test -f "$RECURRENT_TMP/$f" || { echo "FAIL: RecurrentPPO smoke did not produce $f" >&2; rm -rf "$RECURRENT_TMP"; exit 1; }
+	done
+	rm -rf "$RECURRENT_TMP"
+	echo "RecurrentPPO memory-chase smoke OK."
+else
+	echo "SKIP: sb3-contrib not installed in .venv-train (.venv-train/bin/pip install -r requirements-recurrent.txt to enable)."
 fi
 
 echo "== CleanRL + RND intrinsic-reward smoke (skipped if godot_rl absent in .venv-train) =="
