@@ -28,6 +28,10 @@ var _warned_no_viewport := false
 func _ready() -> void:
 	if not is_key_valid(observation_key):
 		push_error("CameraSensor: observation_key %r must contain \"2d\" (godot_rl routes image obs on that substring)." % observation_key)
+	# #374: a partially-set obs_size (exactly one component > 0) is silently ignored — BOTH must be
+	# > 0 to downscale. Warn so a typo like (36, 0) doesn't quietly leave obs at native resolution.
+	if (obs_size.x > 0) != (obs_size.y > 0):
+		push_warning("CameraSensor: obs_size %s has exactly one non-zero component; both must be > 0 to downscale. Ignoring it — observations stay at the viewport's native resolution." % str(obs_size))
 
 func set_capture_fn_for_test(fn: Callable) -> void:
 	_capture_fn = fn
@@ -100,7 +104,9 @@ func get_image() -> Image:
 	if viewport == null and _capture_fn == null:
 		return null
 	var img: Image = _capture()
-	if img == null:
+	# #374: guard an empty capture like get_observation() does, so _apply_obs_size never calls
+	# resize() on an empty Image (per-frame error spam / undefined deploy input).
+	if img == null or img.is_empty():
 		return null
 	img = _apply_obs_size(_owned_frame(img))  # deploy capture matches the training obs resolution (#362)
 	var target_format: int = Image.FORMAT_L8 if grayscale else Image.FORMAT_RGB8

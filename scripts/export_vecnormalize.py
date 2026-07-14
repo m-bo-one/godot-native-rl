@@ -11,6 +11,9 @@ Run under .venv-train (has stable_baselines3).
 
 Usage:
     .venv-train/bin/python scripts/export_vecnormalize.py path/to/vec_normalize.pkl [--out stats.json]
+    .venv-train/bin/python scripts/export_vecnormalize.py path/to/vec_normalize.pkl --stem <model-stem>
+
+--stem writes the stem-coupled <stem>_vecnorm.json (#363) so the stats ride along on a Hub push/pull.
 """
 from __future__ import annotations
 

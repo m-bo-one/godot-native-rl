@@ -116,4 +116,44 @@ func _initialize() -> void:
 	s7.free()
 	vp7.free()
 
+	# --- #374: a NON-SQUARE obs_size pins the width/height ordering (a square case can't catch an
+	# x/y swap). obs_size = (width=4, height=2) -> obs_shape [height, width, C] = [2, 4, 3]. ---
+	var s8 = CameraSensor.new()
+	var vp8 := SubViewport.new()
+	vp8.size = Vector2i(8, 8)
+	s8.viewport = vp8
+	s8.obs_size = Vector2i(4, 2)  # width 4, height 2
+	s8.set_image_for_test(_make_image(8, 8, Image.FORMAT_RGB8, Color(1, 0, 0)))
+	h.assert_eq(s8.get_obs_shape(), [2, 4, 3], "#374: non-square obs_shape is [height, width, C]")
+	var ns: Image = s8.get_image()
+	h.assert_eq(ns.get_width(), 4, "#374: get_image width = obs_size.x")
+	h.assert_eq(ns.get_height(), 2, "#374: get_image height = obs_size.y")
+	h.assert_eq(s8.get_observation(), "ff0000".repeat(8), "#374: non-square red obs bytes (4*2 px)")
+	s8.free()
+	vp8.free()
+
+	# --- #374: a partially-set obs_size (exactly one component > 0) does NOT activate — the frame
+	# stays at native resolution (get_observation also warns; behavior is what we can assert). ---
+	var s9 = CameraSensor.new()
+	var vp9 := SubViewport.new()
+	vp9.size = Vector2i(3, 3)
+	s9.viewport = vp9
+	s9.obs_size = Vector2i(36, 0)  # partial -> ignored
+	s9.set_image_for_test(_make_image(3, 3, Image.FORMAT_RGB8, Color(0, 1, 0)))
+	h.assert_eq(s9.get_obs_shape(), [3, 3, 3], "#374: partial obs_size stays at native resolution")
+	s9.free()
+	vp9.free()
+
+	# --- #374: get_image() guards an EMPTY capture (like get_observation does), so obs_size's
+	# resize() isn't called on an empty Image (error spam / undefined output). ---
+	var s10 = CameraSensor.new()
+	var vp10 := SubViewport.new()
+	vp10.size = Vector2i(8, 8)
+	s10.viewport = vp10
+	s10.obs_size = Vector2i(2, 2)
+	s10.set_capture_fn_for_test(func() -> Image: return Image.new())  # empty capture
+	h.assert_true(s10.get_image() == null, "#374: get_image returns null on an empty capture")
+	s10.free()
+	vp10.free()
+
 	h.finish(self)

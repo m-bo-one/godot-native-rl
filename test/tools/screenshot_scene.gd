@@ -34,7 +34,11 @@ func _process(_delta: float) -> bool:
 	if _elapsed < _frames:
 		return false
 	var img := get_root().get_texture().get_image()
-	img.save_png(_out_path)
+	var save_err := img.save_png(_out_path)
+	if save_err != OK:
+		push_error("screenshot_scene: cannot save %s (err %d)" % [_out_path, save_err])
+		quit(1)
+		return false
 	print("saved: ", _out_path)
 	quit(0)
 	return false

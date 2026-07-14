@@ -58,7 +58,15 @@ def ray_directions() -> list:
 def ray_aabb_distance(origin, direction, aabb) -> float:
     """Slab-method ray-vs-AABB: hit distance (>= 0) along the unit `direction`, or -1.0 for a
     miss / a box entirely behind the origin. An origin inside the box reads 0.0 (the physics
-    ray reports a hit at the origin)."""
+    ray reports a hit at the origin).
+
+    #374 edge: an origin EXACTLY on a face is ill-defined and NOT part of the parity contract.
+    Here it reads hit-at-0 for every direction (t_far becomes -0.0, which `t_far < 0.0` treats as
+    in front), so all 8 rays encode closeness 1.0; Godot's intersect_ray from a point coincident
+    with a collider boundary is direction/face-dependent instead. Parity holds arbitrarily close to
+    a face (see the near-wall golden cases) but not AT it — the game keeps the agent OUTSIDE boxes
+    (resolve_aabb pins it on the boundary at worst), and this coincident-origin state is transient
+    and unobserved by the reward, so the tiny obs discrepancy there does not affect training."""
     ox, oy = origin
     dx, dy = direction
     min_x, min_y, max_x, max_y = aabb

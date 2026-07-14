@@ -1,5 +1,5 @@
 {
- "_comment": "chase_rays (#364) golden ray obs: analytic slab-method closenesses at fixed agent positions. Python asserts EXACT reproduction; the GDScript test asserts the real physics RaycastSensor2D matches within 2e-3. Layout/ray params in chase_rays_twin_env.py and chase_rays_game.gd must stay in sync with this file.",
+ "_comment": "chase_rays (#364) golden ray obs: analytic slab-method closenesses at fixed agent positions. Python asserts EXACT reproduction; the GDScript test asserts the real physics RaycastSensor2D matches within 2e-3. Layout/ray params in chase_rays_twin_env.py and chase_rays_game.gd must stay in sync with this file. #374: the last two cases sit 2px OUTSIDE a box face (closeness ~0.99) to pin parity in the near-wall regime the other cases miss; parity holds arbitrarily close to a face. EXACT face coincidence (origin ON a collider boundary) is deliberately NOT pinned \u2014 Godot's intersect_ray is ill-defined there (direction/face-dependent), so a golden value would be fragile; see chase_rays_twin_env.ray_aabb_distance.",
  "cases": [
   {
    "agent": [
@@ -95,6 +95,38 @@
     0.0,
     0.0,
     0.0
+   ]
+  },
+  {
+   "agent": [
+    248.0,
+    200.0
+   ],
+   "rays": [
+    0.0,
+    0.0,
+    0.982579160468315,
+    0.9927840519980508,
+    0.9927840519980508,
+    0.982579160468315,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "agent": [
+    300.0,
+    148.0
+   ],
+   "rays": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.982579160468315,
+    0.9927840519980508,
+    0.9927840519980508,
+    0.982579160468315
    ]
   }
  ]
