@@ -23,7 +23,10 @@ godot_rl v0.8.2-compatible; since #12 the step message ALSO carries an additive 
 array (horizon ends via `reset_after` = truncation; agent-set `done` = terminal; `done` stays =
 term OR trunc so stock godot_rl is untouched) — consumed by OUR adapters via
 `scripts/godot_env_truncation.TruncationAwareGodotEnv` (PettingZoo `GodotParallelEnv` + the RLlib
-`GodotRLlibEnv`). **Upstream compatibility pin (checked 2026-07-13):** godot-rl 0.8.2 is the
+`GodotRLlibEnv`). **#379: `truncated` must follow `done`'s lifecycle** — `NcnnControllerCore.reset()`
+must NOT clear it (agents reset in the SAME frame the horizon fires, before the Sync reads), else
+every horizon reaches the wire as `truncated=[false]` and the split silently no-ops; cleared only by
+the Sync's paired `set_done_false()` (see gotchas.md). **Upstream compatibility pin (checked 2026-07-13):** godot-rl 0.8.2 is the
 latest PyPI release (2025-02-25); upstream main is protocol-compatible through commit `207b6f4`
 (2026-06-13) — its `godot_env.py` still collapses both flags into `done` (the `TODO update API to
 term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot-rl.

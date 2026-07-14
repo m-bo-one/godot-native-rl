@@ -18,6 +18,17 @@ func _ready() -> void:
 	img.fill(Color(1, 0, 0))
 	_camera.set_image_for_test(img)
 
+# Reset in the SAME frame the horizon fires, exactly as the real example agents do
+# (chase_agent.gd:137). Without this the stub was unrepresentative — it never reset itself, so the
+# base controller's set_done_false() was the only clear path and the #379 bug (reset() clearing
+# truncated before the Sync read it) could never manifest here. With it, run_protocol_test.py's
+# horizon crossing is a genuine end-to-end regression for #379.
+func _physics_process(delta: float) -> void:
+	super._physics_process(delta)  # _core.step(reset_after)
+	if needs_reset:
+		needs_reset = false
+		reset()
+
 func get_obs() -> Dictionary:
 	return {"obs": [0.0, 0.0, 1.0, 0.0, 0.5], "camera_2d": _camera.get_observation()}
 

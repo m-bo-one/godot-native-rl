@@ -170,6 +170,11 @@ the same change. New items → GitHub issue only.
      RLlib `GodotRLlibEnv`). Upstream godot_rl still collapses both into `done`
      (`godot_env.py` TODO, unchanged through main @207b6f4 2026-06-13, no upstream PR) — when it
      lands there, the stock SB3/CleanRL paths get the split for free from our wire.
+   - **Fixed 2026-07-14 (#379):** the split silently no-oped on the wire — agents call `reset()`
+     in the SAME frame the horizon fires, and `reset()` was clearing `truncated` before the Sync
+     read it, so every horizon end shipped as `truncated=[false]`. `truncated` now follows `done`'s
+     lifecycle (cleared only by the Sync's paired `set_done_false()`); regressed at the core, sync,
+     and socket levels (the protocol test now crosses a real `reset_after` horizon).
    - **Done 2026-06-01 (socket timeout #4 + info field #2):** spec
      `docs/superpowers/specs/2026-06-01-socket-timeout-and-info-field-design.md`, plan
      `docs/superpowers/plans/2026-06-01-socket-timeout-and-info-field.md`. Added a pure

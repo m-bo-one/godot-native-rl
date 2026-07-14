@@ -8,6 +8,7 @@
 
 [node name="Agent" type="Node2D" parent="."]
 script = ExtResource("2")
+reset_after = 3
 
 [node name="Curriculum" type="Node" parent="."]
 script = ExtResource("3")
