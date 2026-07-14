@@ -47,4 +47,28 @@ func _initialize() -> void:
 	agent.set_action({"tilt": [2.0, -2.0]})
 	h.assert_eq(agent.stored_tilt_for_test(), Vector2(1.0, -1.0), "actions clamped to [-1,1]")
 
+	# --- Fall counter (#372): only an ACTUAL fall increments `falls`, NOT a reset_after timeout.
+	# The HUD showed "falls" incrementing every ~16.7s (the horizon reset) even for a perfect net;
+	# reset_episode now distinguishes a fall (was_fall=true) from a timeout/checker reset. ---
+	var g2 = Game.new()
+	get_root().add_child(g2)  # _ready() runs the initial reset_episode() — not a fall
+	h.assert_eq(g2.falls, 0, "#372: no falls after the initial reset")
+	g2.reset_episode(false)   # reset_after horizon: the ball was balanced, not a fall
+	h.assert_eq(g2.falls, 0, "#372: a timeout reset is not counted as a fall")
+	g2.reset_episode(true)    # actual fall
+	h.assert_eq(g2.falls, 1, "#372: a fall reset increments falls")
+	g2.reset_episode(true)
+	h.assert_eq(g2.falls, 2, "#372: a second fall is counted")
+	g2.reset_episode()        # no-arg (the trained/smoke checkers' call path) = not a fall
+	h.assert_eq(g2.falls, 2, "#372: a no-arg reset (checker path) is not a fall")
+
+	# The balance streak must survive a timeout reset (so "best" isn't capped at the horizon) and
+	# only zero on a real fall.
+	g2.balance_frames = 500
+	g2.reset_episode(false)   # horizon/checker reset — streak continues
+	h.assert_eq(g2.balance_frames, 500, "#372: timeout reset does not cap the balance streak")
+	g2.reset_episode(true)    # fall — streak ends
+	h.assert_eq(g2.balance_frames, 0, "#372: a fall zeroes the balance streak")
+	g2.free()
+
 	h.finish(self)
