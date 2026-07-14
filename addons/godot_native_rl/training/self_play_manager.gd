@@ -117,9 +117,20 @@ func _load_ledger() -> void:
 		_pool.load_ledger(f.get_as_text())
 
 func _save_ledger() -> void:
+	# Atomic write (#371): serialize to a temp file, then rename over pool.json. The #189 mid-run
+	# freezer (Python) and a league run reading the pool can touch this file concurrently; a
+	# truncate-then-write here could hand a reader torn JSON (or lose the other writer's update).
+	# rename over the target is atomic on POSIX, so a reader always sees a complete ledger.
 	DirAccess.make_dir_recursive_absolute(pool_dir)
-	var f := FileAccess.open(_ledger_path(), FileAccess.WRITE)
+	var final_path := _ledger_path()
+	var tmp_path := final_path + ".tmp"
+	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
-		push_error("SelfPlayManager: cannot write ledger '%s'." % _ledger_path())
+		push_error("SelfPlayManager: cannot write ledger '%s'." % final_path)
 		return
 	f.store_string(_pool.ledger_to_json())
+	f.close()  # flush before the rename so the swapped-in file is complete
+	var err := DirAccess.rename_absolute(tmp_path, final_path)
+	if err != OK:
+		push_error("SelfPlayManager: could not atomically replace ledger '%s' (err %d)." % [final_path, err])
+		DirAccess.remove_absolute(tmp_path)

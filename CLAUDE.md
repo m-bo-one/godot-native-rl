@@ -124,7 +124,12 @@ term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot
   cross-freezes BOTH live learners into the opponent pool mid-run (TorchScript→ncnn snapshot +
   `pool.json` ELO-ledger registration per policy — the exact #29 league layout, so
   `SelfPlayManager`/`pick_opponent` consume it unchanged): the pool grows DURING one run, no
-  alternating-phase restarts. Default 0 = off (existing behavior untouched). Distinct policy identity is
+  alternating-phase restarts. Default 0 = off (existing behavior untouched). Reruns against a
+  persistent `POOL_DIR` are safe (#371): the freezer uniquifies a snapshot name that already exists
+  (`seeker_live_u000002` → `_2`) instead of overwriting a prior run's weights + crashing on the
+  duplicate registration, and `pool.json` writes are atomic (temp+rename, both the Python freezer
+  and `SelfPlayManager._save_ledger`) so a league run reading the pool mid-write never sees torn
+  JSON. Distinct policy identity is
   scene-driven (#73): each agent bakes a `policy_group` (`seeker`/`hider`) in `hide_seek_world.tscn`,
   honored only when the training scene's Sync sets `multi_policy=true` (the *same* world scene stays
   reusable by the shared-policy example, where the flag is off) — no `--multi-policy` cmdline gate.

@@ -123,9 +123,15 @@ def freeze_snapshot(agent, observation_dim: int, policy: str, update: int, pool_
     import export_to_ncnn
     import selfplay_phase
 
-    name = snapshot_name(policy, update)
     pool_dir = pathlib.Path(pool_base) / policy
     pool_dir.mkdir(parents=True, exist_ok=True)
+    # #371: derive a name that can't collide with a PRIOR run's pool member. Reruns restart the
+    # update schedule from the same indices, so without this the export would overwrite an existing
+    # snapshot's weights and register_snapshot_file would then raise on the duplicate name — killing
+    # the (checkpoint-less) trainer and leaving the surviving ledger entry pointing at other weights.
+    # Uniquify BEFORE exporting so old snapshots + ratings stay intact and the pool grows additively.
+    name = selfplay_phase.unique_member_name(
+        selfplay_phase.read_member_names(pool_dir), snapshot_name(policy, update))
     pt_path = pool_dir / f"{name}.pt"
     export_actor_as_torchscript(agent, observation_dim, pt_path)
     rc = export_to_ncnn.main([str(pt_path), "--outdir", str(pool_dir)])
