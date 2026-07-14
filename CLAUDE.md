@@ -326,10 +326,13 @@ term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot
   RLlib **multi-agent** PPO over `ParallelPettingZooEnv(GodotParallelEnv)` (#123): one policy
   module per `agent_policy_names` entry (hide & seek seeker+hider), spaces squeezed per agent
   (`Dict['obs']`→Box, `Tuple(Discrete)`→Discrete), each RLModule actor → TorchScript
-  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The env writes
-  `agent_policies.json`+`env_meta.json` at construction; the `policy_mapping_fn` reads the FILE —
-  ray cloudpickles `__main__` functions by value, so module-global registries are per-function
-  copies (gotcha, see docs/dev/gotchas.md). Same overrides as the RLlib backend; guarded smoke.
+  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The squeezed env renames the
+  adapter's integer agents to `<policy>_<index>` (from the wire's `agent_policy_names`), so the
+  `policy_mapping_fn` (`policy_of`) is a pure `<policy>_<index>`→`<policy>` string parse —
+  stateless, which sidesteps the ray-cloudpickles-`__main__`-by-value trap that breaks a
+  module-global registry (gotcha, see docs/dev/gotchas.md). `env_meta.json` (obs_dim/nvec/policies)
+  is still written at construction for the per-policy export step. Same overrides as the RLlib
+  backend; guarded smoke.
 - **Train (chase, SKRL backend):** `./scripts/train_skrl.sh` — stock **skrl 2.1** PPO (torch) over
   the shared single-agent gymnasium adapter (#25, backlog 19); models are user-authored skrl
   mixin classes over plain `nn.Sequential` trunks, so the deploy trunk (obs→logits) is traced to
