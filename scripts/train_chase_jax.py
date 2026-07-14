@@ -79,8 +79,14 @@ class Rollout(NamedTuple):
 
 
 def compute_gae(rewards, values, last_value, gamma: float, lam: float):
-    """GAE over a (T, N) rollout with no terminals (the twin only truncates — matches the
-    NumPy twin's 1000-decision horizon handled by rollout slicing)."""
+    """GAE over a (T, N) rollout with NO done-masking.
+
+    Correct for the chase twin specifically: it is a CONTINUING task — a catch relocates the
+    target inside batched_step (chase_twin_jax has no per-step terminal/truncation and no episode
+    horizon), so there are no episode boundaries to mask and bootstrapping across rollout edges is
+    exactly right. #374: this is NOT a general GAE — anyone forking this trainer for an EPISODIC
+    twin (real `done`s) MUST multiply the recursion by (1 - done) per step, or advantages leak
+    across episode boundaries."""
     def scan_fn(carry, xs):
         reward, value, next_value = xs
         delta = reward + gamma * next_value - value

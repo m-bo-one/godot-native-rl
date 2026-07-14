@@ -25,6 +25,9 @@ EXPERIMENT="${EXPERIMENT:-hide_seek_rllib}"
 TRAIN_DIR="${TRAIN_DIR:-logs/rllib}"
 OUTDIR="${OUTDIR:-models}"
 SCENE="${SCENE:-res://examples/hide_and_seek/hide_and_seek_multipolicy_train_parallel.tscn}"
+# Declared module set (#374): forward to the trainer so a non-default SCENE emitting other policy
+# names (e.g. "predator prey") can declare them here instead of failing loud in validate_policies.
+DECLARE_POLICIES="${DECLARE_POLICIES:-seeker hider}"
 # Fully-trained runs reach logit magnitudes where benign fp32 torch-vs-ncnn drift slightly
 # exceeds the default 1e-2 atol (argmax stays exact and is enforced regardless).
 ATOL="${ATOL:-5e-2}"
@@ -39,9 +42,10 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting RLlib multi-policy trainer (timesteps=$TIMESTEPS, base_port=$BASE_PORT)..."
+# shellcheck disable=SC2086  # DECLARE_POLICIES is a space-separated name list by construction
 "$PY_RLLIB" scripts/train_rllib_pettingzoo.py --timesteps "$TIMESTEPS" --base_port "$BASE_PORT" \
 	--speedup "$SPEEDUP" --action_repeat "$ACTION_REPEAT" \
-	--experiment "$EXPERIMENT" --train_dir "$TRAIN_DIR" &
+	--experiment "$EXPERIMENT" --train_dir "$TRAIN_DIR" --policies $DECLARE_POLICIES &
 TRAINER_PID=$!
 
 # Race-free startup (the #286 gotcha class): wait until the trainer has actually BOUND the env
@@ -78,9 +82,11 @@ echo "Trainer exited with code $TRAINER_RC"
 
 META="$TRAIN_DIR/$EXPERIMENT/env_meta.json"
 test -f "$META" || { echo "FAIL: $META not written by the trainer" >&2; exit 1; }
-OBS_DIM="$("$PY_TRAIN" -c "import json;print(json.load(open('$META'))['obs_dim'])")"
-NVEC="$("$PY_TRAIN" -c "import json;print(' '.join(str(n) for n in json.load(open('$META'))['nvec']))")"
-POLICIES="$("$PY_TRAIN" -c "import json;print(' '.join(json.load(open('$META'))['policies']))")"
+# Pass $META via argv, not string-interpolated into the source (#374): a TRAIN_DIR path with a
+# quote or space would otherwise break the inline Python (or worse, inject).
+OBS_DIM="$("$PY_TRAIN" -c "import json,sys;print(json.load(open(sys.argv[1]))['obs_dim'])" "$META")"
+NVEC="$("$PY_TRAIN" -c "import json,sys;print(' '.join(str(n) for n in json.load(open(sys.argv[1]))['nvec']))" "$META")"
+POLICIES="$("$PY_TRAIN" -c "import json,sys;print(' '.join(json.load(open(sys.argv[1]))['policies']))" "$META")"
 
 for POLICY in $POLICIES; do
 	PT_PATH="$OUTDIR/hide_seek_rllib_${POLICY}.pt"

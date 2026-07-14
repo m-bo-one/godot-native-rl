@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
@@ -95,12 +96,28 @@ def inner_index_of(agent_id) -> int:
 
 def validate_policies(agent_policy_names: Sequence[str], declared: Sequence[str]) -> None:
     """Every wire policy name must be a declared module id, or training would silently
-    route agents to a policy that doesn't exist. Fails loud naming the offenders."""
-    unknown = sorted(set(agent_policy_names) - set(declared))
+    route agents to a policy that doesn't exist. Fails loud naming the offenders. A declared
+    policy that never appears on the wire (declared - wire, #374) is only WARNED — RLlib creates
+    its module but it gets no batches, so it must NOT be exported (see export_policies)."""
+    wire = set(agent_policy_names)
+    declared_set = set(declared)
+    unknown = sorted(wire - declared_set)
     if unknown:
         raise ValueError(
-            f"scene emitted policy names {unknown} not in --policies {sorted(set(declared))}; "
+            f"scene emitted policy names {unknown} not in --policies {sorted(declared_set)}; "
             "declare them (or fix the scene's policy_group exports)")
+    unused = sorted(declared_set - wire)
+    if unused:
+        print(f"WARNING: declared policies {unused} never appeared on the wire — they get no "
+              "batches, so they are NOT trained or exported (check the scene's policy_group "
+              "exports or --policies).", file=sys.stderr)
+
+
+def export_policies(agent_policy_names: Sequence[str]) -> list:
+    """The policies to export (#374): only those that actually appeared on the wire, so a
+    declared-but-unmapped policy can never ship an untrained net. Recorded as env_meta['policies'],
+    which the .sh export loop iterates. validate_policies guarantees wire ⊆ declared upstream."""
+    return sorted(set(agent_policy_names))
 
 
 def squeeze_obs_space(space):
@@ -183,8 +200,11 @@ def make_squeezed_env_cls(declared_policies: Sequence[str]):
                 for a in self.possible_agents}
             self._np = np
             first = self.possible_agents[0]
+            # #374: export only policies that actually appeared on the wire (got batches), so a
+            # declared-but-unmapped policy never ships an untrained net from init weights.
             meta = build_env_meta(int(self.observation_spaces[first].shape[0]),
-                                  [int(self.action_spaces[first].n)], declared_policies)
+                                  [int(self.action_spaces[first].n)],
+                                  export_policies(self._inner.agent_policy_names))
             write_env_meta(os.path.join(cfg["run_dir"], "env_meta.json"), meta)
             print("env_meta:", meta)
 
