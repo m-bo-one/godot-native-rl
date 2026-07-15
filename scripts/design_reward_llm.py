@@ -138,8 +138,11 @@ def search(args) -> dict:
         # select_survivors drops NaN fitnesses (#368); feed the elite into the reflection so the
         # LLM mutates from the whole surviving population, not just the single best.
         survivors = rd.select_survivors(candidates, fitnesses, keep=max(1, args.candidates // 2))
+        # Filter by VALUE (#374): a re-proposed copy of best_recipe is a distinct object, so an
+        # identity check (`is not`) would let a content-duplicate of the best appear twice in the
+        # reflection prompt. `!=` drops any survivor equal to the best.
         reflection = rd.build_reflection(best_recipe, {}, fitness_history,
-                                         survivors=[s for s in survivors if s is not best_recipe])  # per-term stats: v2
+                                         survivors=[s for s in survivors if s != best_recipe])  # per-term stats: v2
 
     print("\nBEST fitness %.3f\nBEST recipe: %s" % (best_fitness, json.dumps(best_recipe, indent=2)))
     if best_recipe is not None and args.out:

@@ -13,4 +13,4 @@ func _process(_delta: float) -> void:
 		text = "balance: n/a"
 		return
 	text = "balanced: %4.1f s   best: %4.1f s   falls: %d" % [
-		_game.balance_frames / 60.0, _game.best_balance_frames / 60.0, maxi(_game.resets, 0)]
+		_game.balance_frames / 60.0, _game.best_balance_frames / 60.0, _game.falls]

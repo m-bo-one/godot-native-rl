@@ -76,6 +76,9 @@ func _initialize() -> void:
 	h.assert_true(ledger["members"].has("gen1") and ledger["members"].has("gen2"), "ledger keeps members")
 	var games_total := int(ledger["members"]["gen1"]["games"]) + int(ledger["members"]["gen2"]["games"])
 	h.assert_eq(games_total, 20, "all matches recorded")
+	# #371: the ledger is written atomically (temp file + rename), so after 20 saves no stray
+	# .tmp file is left behind and pool.json is complete valid JSON (parsed above).
+	h.assert_true(not FileAccess.file_exists(POOL_DIR + "/pool.json.tmp"), "#371: atomic save leaves no .tmp file")
 
 	# --- Failing ghost load: keeps current, loud, no crash ---
 	ghost2.accept = false

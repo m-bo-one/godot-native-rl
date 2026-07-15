@@ -54,13 +54,17 @@ func _physics_process(delta: float) -> void:
 	reward += alive_reward
 	# Fall = terminal: signal done so the trainer gets episode boundaries (quadruped lesson —
 	# the core's reset_after timeout alone never fires when episodes end early).
+	var was_fall := false
 	if _game.is_fallen():
 		reward -= fall_penalty
 		done = true
 		needs_reset = true
+		was_fall = true
 	if needs_reset:
 		needs_reset = false
-		_game.reset_episode()
+		# #372: tell the game whether this reset is a real fall (vs the reset_after horizon), so the
+		# HUD's fall counter isn't inflated by the periodic timeout with a still-balanced ball.
+		_game.reset_episode(was_fall)
 		reset()
 		# Do NOT zero_reward(): the bridge reads reward+done together THEN zeroes (hide&seek
 		# contract) — zeroing here would wipe the fall penalty before the trainer sees it.

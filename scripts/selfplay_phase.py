@@ -9,8 +9,10 @@ Stdlib only; the pure helper is unit-tested in test/python/test_selfplay_phase.p
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
+import tempfile
 
 DEFAULT_RATING = 1200.0
 
@@ -25,10 +27,57 @@ def register_snapshot(ledger: dict, name: str, rating=None) -> dict:
     return {"members": members, "learner_rating": learner}
 
 
+def unique_member_name(existing, base: str) -> str:
+    """Pure: `base` if free, else the first available `base_2`, `base_3`, ... (#371).
+
+    The #189 mid-run freezer names snapshots by update index, which restarts from the same schedule
+    on every run. Reruns against a persistent pool_dir would otherwise reuse a prior run's name —
+    overwriting its weights and then crashing on the duplicate registration. Uniquifying keeps the
+    old snapshot intact and grows the pool additively."""
+    existing = set(existing)
+    if base not in existing:
+        return base
+    i = 2
+    while f"{base}_{i}" in existing:
+        i += 1
+    return f"{base}_{i}"
+
+
+def read_member_names(pool_dir) -> set:
+    """Existing pool member names, or an empty set if the ledger is absent/unreadable (#371)."""
+    ledger_path = pathlib.Path(pool_dir) / "pool.json"
+    if not ledger_path.exists():
+        return set()
+    try:
+        data = json.loads(ledger_path.read_text())
+        members = data.get("members", {}) if isinstance(data, dict) else {}
+        return set(members.keys()) if isinstance(members, dict) else set()
+    except (json.JSONDecodeError, OSError, ValueError):
+        return set()
+
+
+def _atomic_write_text(path: pathlib.Path, text: str) -> None:
+    """Write `text` to `path` via a temp file + os.replace in the same dir (#371), mirroring
+    checkpoints.write_manifest — so a SelfPlayManager reader consuming the pool WHILE it grows
+    (the whole point of #189) can never observe torn JSON."""
+    fd, tmp = tempfile.mkstemp(prefix=".pool-", suffix=".json", dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o644)  # mkstemp is 0600; pool.json is a normal human-readable file
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def register_snapshot_file(pool_dir, name: str, rating=None) -> dict:
     """File-level registration (create-ledger-if-absent + register + write): THE one writer of
     pool.json, shared by this CLI and the #189 mid-run freezer so the on-disk ledger contract has
-    a single definition. Returns the updated ledger."""
+    a single definition. The write is atomic (#371). Returns the updated ledger."""
     pool_dir = pathlib.Path(pool_dir)
     pool_dir.mkdir(parents=True, exist_ok=True)
     ledger_path = pool_dir / "pool.json"
@@ -36,7 +85,7 @@ def register_snapshot_file(pool_dir, name: str, rating=None) -> dict:
     if ledger_path.exists():
         ledger = json.loads(ledger_path.read_text())
     ledger = register_snapshot(ledger, name, rating)
-    ledger_path.write_text(json.dumps(ledger, indent=2))
+    _atomic_write_text(ledger_path, json.dumps(ledger, indent=2))
     return ledger
 
 

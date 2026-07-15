@@ -144,6 +144,28 @@ def main():
         if reply.get("returns") != [7.0]:
             failures.append("curriculum params not applied (got %r)" % reply.get("returns"))
 
+        # --- #379 regression: cross the reset_after=3 horizon and assert the step message at the
+        # horizon carries truncated=[true] (together with done=[true]). The stub agent now resets
+        # in-frame like the real example agents, so this is the exact end-to-end sequence the bug
+        # corrupted (reset() cleared truncated before the Sync read it -> truncated always [false]
+        # on the wire, silently no-oping the #12 split). Bounded loop so off-by-one frame accounting
+        # can't wedge it; invariant-checks every step so a truncated-without-done leak also fails.
+        saw_horizon_trunc = False
+        for _ in range(12):
+            send(conn, {"type": "action", "action": [{"move": 2}]})
+            s = recv(conn)
+            if s.get("type") != "step":
+                failures.append("horizon loop: non-step reply (got %r)" % s.get("type"))
+                break
+            tr, dn = s.get("truncated"), s.get("done")
+            if tr == [True] and dn != [True]:
+                failures.append("truncated=[true] without done=[true] on the wire (got done=%r)" % dn)
+            if tr == [True]:
+                saw_horizon_trunc = True
+                break
+        if not saw_horizon_trunc:
+            failures.append("never saw truncated=[true] crossing the reset_after=3 horizon (#379 bug)")
+
         send(conn, {"type": "close"})
     finally:
         if proc is not None:

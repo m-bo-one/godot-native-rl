@@ -23,6 +23,12 @@ if HAVE_JAX:
 
 needs_jax = unittest.skipUnless(HAVE_JAX, "jax not installed")
 
+# #374: guard each case on the deps it ACTUALLY uses, so a partial install (jax present but
+# gymnasium/flax absent) SKIPS instead of ERRORing at discovery/runtime.
+# ChaseTwinEnv is defined only under `if _HAVE_GYM` in chase_twin_env.
+HAVE_GYM = HAVE_JAX and hasattr(npt, "ChaseTwinEnv")
+needs_jax_gym = unittest.skipUnless(HAVE_GYM, "jax+gymnasium not installed")
+
 
 @needs_jax
 class TestObsParity(unittest.TestCase):
@@ -44,6 +50,7 @@ class TestObsParity(unittest.TestCase):
 
 @needs_jax
 class TestStepParity(unittest.TestCase):
+    @needs_jax_gym  # this case drives npt.ChaseTwinEnv (gymnasium-gated); the others don't
     def test_deterministic_step_matches_numpy_twin(self):
         # Drive both twins from identical states with a scripted action sequence that causes NO
         # catch (catches consume different RNG streams — semantics are tested separately).
@@ -93,14 +100,15 @@ class TestStepParity(unittest.TestCase):
 
 try:
     import torch  # noqa: F401
-    HAVE_TORCH_TOO = HAVE_JAX
+    import flax  # noqa: F401  # train_chase_jax imports flax.linen at module level (#374)
+    HAVE_EXPORT_DEPS = HAVE_JAX
 except ImportError:
-    HAVE_TORCH_TOO = False
+    HAVE_EXPORT_DEPS = False
 
-needs_jax_torch = unittest.skipUnless(HAVE_TORCH_TOO, "jax+torch not installed")
+needs_export = unittest.skipUnless(HAVE_EXPORT_DEPS, "jax+torch+flax not installed")
 
 
-@needs_jax_torch
+@needs_export
 class TestActorExportParity(unittest.TestCase):
     def test_flax_params_to_torch_actor_matches(self):
         # The deploy seam: the trained flax actor and the exported torch module must emit the

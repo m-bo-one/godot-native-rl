@@ -63,7 +63,12 @@ func step(reset_after: int) -> void:
 func reset() -> void:
 	n_steps = 0
 	needs_reset = false
-	truncated = false
+	# NOTE (#379): reset() deliberately does NOT clear `truncated`. Agents call reset() in the SAME
+	# frame the horizon fires (before the Sync reads the step), so clearing it here would make every
+	# horizon end reach the wire as terminated (truncated=false) — silently no-oping the #12 split.
+	# `truncated` follows `done`'s lifecycle: set at the horizon, cleared only by the Sync's paired
+	# set_done_false(). The only frame reset() runs with truncated=true is the horizon frame, where
+	# done=true too, and the Sync reads+clears both together — so nothing leaks into the next episode.
 	init_recurrent_state()  # recurrent policies must not carry memory across episodes
 
 func reset_if_done() -> void:

@@ -76,6 +76,22 @@ class TestPolicyIdentity(unittest.TestCase):
             tr.validate_policies(["seeker", "ghost"], ("seeker", "hider"))
         self.assertIn("ghost", str(ctx.exception))
 
+    def test_validate_policies_warns_on_unused_declared(self):
+        # #374: a declared policy that never appears on the wire is a config error — RLlib creates
+        # an untrained module and the export loop would ship it from init weights. Warn (not raise).
+        import io
+        from contextlib import redirect_stderr
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            tr.validate_policies(["seeker", "seeker"], ("seeker", "hider"))  # hider never mapped
+        self.assertIn("hider", buf.getvalue())
+
+    def test_export_policies_are_wire_observed_only(self):
+        # #374: meta['policies'] drives the export loop, so it must list only policies that actually
+        # got batches (appeared on the wire) — never a declared-but-unmapped one.
+        self.assertEqual(tr.export_policies(["seeker", "hider", "seeker"]), ["hider", "seeker"])
+        self.assertEqual(tr.export_policies(["seeker", "seeker"]), ["seeker"])
+
 
 class TestSpaceSqueeze(unittest.TestCase):
     @needs_gym

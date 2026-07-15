@@ -41,7 +41,23 @@
   extension** (`scons ... target=template_debug` and `template_release`) on a fresh clone — `addons/godot_native_rl/bin/` is
   gitignored.
 - **The bridge sets `done` at `reset_after`** (godot_rl convention) so episodes terminate and
-  `ep_rew_mean` appears. (A future chip splits this into `terminated`/`truncated`.)
+  `ep_rew_mean` appears. Since #12 the step message ALSO carries an additive `truncated` array
+  (`done` = terminated OR truncated, so stock godot_rl is untouched); OUR adapters
+  (`TruncationAwareGodotEnv`) split it back into Gymnasium `terminated`/`truncated`.
+- **`truncated` must follow `done`'s exact lifecycle — never clear it in `reset()` (#379).** The
+  horizon fires inside `NcnnControllerCore.step()` (sets `truncated=true`, `done=true`,
+  `needs_reset`), but every example agent calls `reset()` in the SAME `_physics_process` frame,
+  BEFORE the Sync reads the step (agents run before the Sync in tree order, and the Sync reads on
+  the next decision). So if `reset()` clears `truncated` (as it originally did), every horizon end
+  reaches the wire as `truncated=[false]` — silently no-oping the whole #12 split (RLlib/PettingZoo
+  then misreport every truncation as terminal, reintroducing the value-bootstrapping bias). Fix:
+  `truncated` is set only by `step()` and cleared only by the Sync's paired `set_done_false()`,
+  exactly like `done`. Leak-safe because `truncated=true` only ever coincides with `done=true`, and
+  the Sync reads+clears both together. **Test trap the original suite fell into:** a stub agent that
+  does NOT reset in-frame (the base controller's `_physics_process` only calls `step()`) can never
+  reproduce this — `test_controller_core.gd` even *codified* the bug ("reset clears truncated"), and
+  the socket protocol test only checked a mid-episode step. The regressions now drive a real core
+  through step()+in-frame-reset() and cross a real `reset_after` horizon over the socket.
 - **`class_name` is unreliable headless:** the global class registry comes from
   `.godot/global_script_class_cache.cfg`, which is gitignored and is **not** rebuilt by
   `--headless`/`--script` runs (only an editor/import pass writes it). So `extends SomeClassName`

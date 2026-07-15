@@ -69,8 +69,16 @@ func _initialize() -> void:
 	ct.step(1)
 	ct.step(1)
 	h.assert_true(ct.get_truncated(), "truncated set again on next horizon")
+	# #379: an agent calls reset() in the SAME frame the horizon fires — BEFORE the Sync reads the
+	# flags. So truncated must SURVIVE reset(); it is cleared only by the paired set_done_false(),
+	# exactly like done. If reset() cleared truncated, every horizon end would reach the wire as
+	# terminated (truncated=false), silently no-oping the #12 split.
 	ct.reset()
-	h.assert_true(not ct.get_truncated(), "reset clears truncated")
+	h.assert_true(ct.get_truncated(), "reset() does NOT clear truncated (survives for the Sync read)")
+	h.assert_true(ct.get_done(), "done also survives reset() (unchanged read-and-clear pairing)")
+	h.assert_eq(ct.n_steps, 0, "reset() still zeroes n_steps")
+	ct.set_done_false()
+	h.assert_true(not ct.get_truncated(), "set_done_false is the only path that clears truncated")
 
 	# heuristic
 	c.set_heuristic("noop")

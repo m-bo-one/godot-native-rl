@@ -95,9 +95,11 @@ def build_model_card(repo_id: str, files, *, base_model: str | None = None) -> s
     if vecnorms:
         vecnorm_hint = (
             "\n## Observation normalization (required)\n\n"
-            "This policy was trained with SB3 `VecNormalize` — set the controller's\n"
-            "`obs_norm_stats_path` to the bundled stats so the obs mean/std is replayed game-side\n"
-            "before inference (without it the policy produces wrong actions silently):\n\n"
+            "The model(s) whose `*_vecnorm.json` is listed below were trained with SB3\n"
+            "`VecNormalize` (other models in this repo, if any, are unaffected) — for each, set that\n"
+            "policy's controller `obs_norm_stats_path` to its bundled stats so the obs mean/std is\n"
+            "replayed game-side before inference (without it that policy produces wrong actions\n"
+            "silently):\n\n"
             + "\n".join("    obs_norm_stats_path = \"res://<your_models_dir>/%s\"" % n for n in vecnorms)
             + "\n")
     body = f"""

@@ -41,6 +41,27 @@ func _initialize() -> void:
 	var info2 = s.build_env_info_message()
 	h.assert_eq(info2["agent_policy_names"], ["seeker", "hider"], "agent_policy_names (multi_policy)")
 
+	# --- #379 wire-level regression: a horizon end must reach the wire as truncated=[true], even
+	# though the agent calls reset() in the SAME frame the horizon fires (before the Sync reads the
+	# step). HorizonAgentStub wraps a REAL NcnnControllerCore and reproduces an example agent's
+	# _physics_process at the horizon (step() then in-frame reset(), see chase_agent.gd:137). The
+	# Sync's read functions run in their documented order (truncated BEFORE done — done's read
+	# clears the pair). If reset() cleared truncated, truncs would be [false] and the #12 split would
+	# silently no-op on every horizon end.
+	var HorizonAgentStub = preload("res://test/unit/horizon_agent_stub.gd")
+	var hz := HorizonAgentStub.new()
+	hz.drive_horizon_then_reset(1)
+	var s2 := SyncScript.new()
+	s2.agents_training = [hz]
+	var truncs = s2._get_truncated_from_agents()  # must be read first
+	var dones = s2._get_done_from_agents()
+	h.assert_eq(truncs, [true], "#379: horizon truncated=[true] reaches the wire despite the in-frame reset()")
+	h.assert_eq(dones, [true], "#379: horizon done=[true] on the wire (0.8.2 semantics unchanged)")
+	h.assert_true(not hz.get_truncated(), "#379: the paired set_done_false cleared truncated after the read")
+	h.assert_true(not hz.get_done(), "#379: done cleared after the read (no leak into next episode)")
+	hz.free()
+	s2.free()
+
 	a.free()
 	b.free()
 	s.free()

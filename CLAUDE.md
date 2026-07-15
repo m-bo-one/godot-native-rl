@@ -23,7 +23,10 @@ godot_rl v0.8.2-compatible; since #12 the step message ALSO carries an additive 
 array (horizon ends via `reset_after` = truncation; agent-set `done` = terminal; `done` stays =
 term OR trunc so stock godot_rl is untouched) — consumed by OUR adapters via
 `scripts/godot_env_truncation.TruncationAwareGodotEnv` (PettingZoo `GodotParallelEnv` + the RLlib
-`GodotRLlibEnv`). **Upstream compatibility pin (checked 2026-07-13):** godot-rl 0.8.2 is the
+`GodotRLlibEnv`). **#379: `truncated` must follow `done`'s lifecycle** — `NcnnControllerCore.reset()`
+must NOT clear it (agents reset in the SAME frame the horizon fires, before the Sync reads), else
+every horizon reaches the wire as `truncated=[false]` and the split silently no-ops; cleared only by
+the Sync's paired `set_done_false()` (see gotchas.md). **Upstream compatibility pin (checked 2026-07-13):** godot-rl 0.8.2 is the
 latest PyPI release (2025-02-25); upstream main is protocol-compatible through commit `207b6f4`
 (2026-06-13) — its `godot_env.py` still collapses both flags into `done` (the `TODO update API to
 term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot-rl.
@@ -121,7 +124,12 @@ term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot
   cross-freezes BOTH live learners into the opponent pool mid-run (TorchScript→ncnn snapshot +
   `pool.json` ELO-ledger registration per policy — the exact #29 league layout, so
   `SelfPlayManager`/`pick_opponent` consume it unchanged): the pool grows DURING one run, no
-  alternating-phase restarts. Default 0 = off (existing behavior untouched). Distinct policy identity is
+  alternating-phase restarts. Default 0 = off (existing behavior untouched). Reruns against a
+  persistent `POOL_DIR` are safe (#371): the freezer uniquifies a snapshot name that already exists
+  (`seeker_live_u000002` → `_2`) instead of overwriting a prior run's weights + crashing on the
+  duplicate registration, and `pool.json` writes are atomic (temp+rename, both the Python freezer
+  and `SelfPlayManager._save_ledger`) so a league run reading the pool mid-write never sees torn
+  JSON. Distinct policy identity is
   scene-driven (#73): each agent bakes a `policy_group` (`seeker`/`hider`) in `hide_seek_world.tscn`,
   honored only when the training scene's Sync sets `multi_policy=true` (the *same* world scene stays
   reusable by the shared-policy example, where the flag is off) — no `--multi-policy` cmdline gate.
@@ -318,10 +326,13 @@ term, trunc` stands; no upstream PR exists). Re-check the pin when bumping godot
   RLlib **multi-agent** PPO over `ParallelPettingZooEnv(GodotParallelEnv)` (#123): one policy
   module per `agent_policy_names` entry (hide & seek seeker+hider), spaces squeezed per agent
   (`Dict['obs']`→Box, `Tuple(Discrete)`→Discrete), each RLModule actor → TorchScript
-  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The env writes
-  `agent_policies.json`+`env_meta.json` at construction; the `policy_mapping_fn` reads the FILE —
-  ray cloudpickles `__main__` functions by value, so module-global registries are per-function
-  copies (gotcha, see docs/dev/gotchas.md). Same overrides as the RLlib backend; guarded smoke.
+  (`export_rllib_to_torchscript.py --module_id <name>`) → ncnn. The squeezed env renames the
+  adapter's integer agents to `<policy>_<index>` (from the wire's `agent_policy_names`), so the
+  `policy_mapping_fn` (`policy_of`) is a pure `<policy>_<index>`→`<policy>` string parse —
+  stateless, which sidesteps the ray-cloudpickles-`__main__`-by-value trap that breaks a
+  module-global registry (gotcha, see docs/dev/gotchas.md). `env_meta.json` (obs_dim/nvec/policies)
+  is still written at construction for the per-policy export step. Same overrides as the RLlib
+  backend; guarded smoke.
 - **Train (chase, SKRL backend):** `./scripts/train_skrl.sh` — stock **skrl 2.1** PPO (torch) over
   the shared single-agent gymnasium adapter (#25, backlog 19); models are user-authored skrl
   mixin classes over plain `nn.Sequential` trunks, so the deploy trunk (obs→logits) is traced to

@@ -22,6 +22,10 @@ var _rng := RandomNumberGenerator.new()
 var balance_frames := 0
 var best_balance_frames := 0
 var resets := -1  # _ready's initial reset_episode() isn't a fall
+# #372: ACTUAL falls only — incremented by reset_episode(was_fall=true), NOT by the reset_after
+# horizon timeout (which recentres a still-balanced ball). The HUD reads this, so a perfect net
+# now shows falls: 0 instead of one every ~16.7s.
+var falls := 0
 
 func _physics_process(_delta: float) -> void:
 	balance_frames += 1
@@ -77,9 +81,14 @@ func is_fallen() -> bool:
 func get_obs_array() -> Array:
 	return assemble_obs(platform_tilt(), relative_ball_pos(), ball_velocity())
 
-func reset_episode() -> void:
-	balance_frames = 0
+func reset_episode(was_fall := false) -> void:
 	resets += 1
+	# #372: only a real fall ends the balance streak. A reset_after horizon (or a checker's re-roll)
+	# recentres a still-balanced ball, so the streak — and therefore best_balance_frames — continues
+	# instead of being capped at the ~16.7s horizon for a perfect net.
+	if was_fall:
+		falls += 1
+		balance_frames = 0
 	if _platform != null:
 		_platform.rotation = Vector3.ZERO
 	if _ball != null:
