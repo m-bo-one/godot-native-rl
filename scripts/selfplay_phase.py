@@ -49,7 +49,9 @@ def read_member_names(pool_dir) -> set:
     if not ledger_path.exists():
         return set()
     try:
-        return set(json.loads(ledger_path.read_text()).get("members", {}).keys())
+        data = json.loads(ledger_path.read_text())
+        members = data.get("members", {}) if isinstance(data, dict) else {}
+        return set(members.keys()) if isinstance(members, dict) else set()
     except (json.JSONDecodeError, OSError, ValueError):
         return set()
 

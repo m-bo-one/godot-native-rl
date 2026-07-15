@@ -68,6 +68,14 @@ class TestReadMemberNames(unittest.TestCase):
             (pathlib.Path(d) / "pool.json").write_text("{ this is not json")
             self.assertEqual(read_member_names(d), set())
 
+    def test_wrong_shape_ledger_is_empty(self):
+        # Valid JSON but the wrong shape (members not a dict, or a non-dict top level) must still
+        # yield an empty set, not crash freeze_snapshot mid-run (#371 robustness).
+        for content in ['{"members": []}', "[1, 2, 3]", '"just a string"', "42"]:
+            with tempfile.TemporaryDirectory() as d:
+                (pathlib.Path(d) / "pool.json").write_text(content)
+                self.assertEqual(read_member_names(d), set(), content)
+
 
 class TestRegisterSnapshotFile(unittest.TestCase):
     def test_create_if_absent_then_append_round_trip(self):
