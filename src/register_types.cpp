@@ -6,13 +6,36 @@
 
 #include <godot_cpp/godot.hpp>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 using namespace godot;
+
+// The OpenMP runtime this library is built against stays loaded for the life of the process.
+// The engine frees the extension at shutdown while the runtime's worker threads are still
+// parked in their spin, and a runtime unloaded under a spinning thread is an access violation
+// on the way out of an otherwise clean exit. Pinned once here; a build without OpenMP has no
+// such module and the call finds nothing to pin.
+static void pin_openmp_runtime() {
+#ifdef _WIN32
+    HMODULE runtime = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, L"vcomp140.dll", &runtime);
+#endif
+}
 
 void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
 
+    pin_openmp_runtime();
     ClassDB::register_class<NcnnRunner>();
     // The recogniser every family extends is registered so a script can ask for it by name
     // and hold any family as one type; it has no instances of its own.
