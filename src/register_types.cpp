@@ -36,7 +36,7 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     }
 
     pin_openmp_runtime();
-    ClassDB::register_class<NcnnRunner>();
+    GDREGISTER_CLASS(NcnnRunner);
     // The recogniser every family extends is registered so a script can ask for it by name
     // and hold any family as one type; it has no instances of its own.
     GDREGISTER_ABSTRACT_CLASS(NcnnASR);

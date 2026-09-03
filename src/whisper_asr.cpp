@@ -13,10 +13,9 @@ using namespace godot;
 
 namespace {
 
-// What a Whisper clip is: thirty seconds at sixteen kilohertz, and the mel frames made of
-// them. The window is 400 samples every 160, centred, which is 3001 frames -- the encoder
-// wants one fewer, and feeding it 3001 is a silent shape error rather than a refusal.
-constexpr int CLIP_SAMPLES = 480000;
+// What a Whisper clip is made of: mel frames of a 400-sample window every 160 samples,
+// centred, which over thirty seconds is 3001 frames -- the encoder wants one fewer, and
+// feeding it 3001 is a silent shape error rather than a refusal.
 constexpr int MEL_BANDS = 80;
 constexpr int MEL_FRAMES = 3000;
 constexpr int FFT_SIZE = 400;

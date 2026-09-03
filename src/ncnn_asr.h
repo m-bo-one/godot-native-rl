@@ -117,6 +117,10 @@ public:
     bool is_busy() const;
     bool is_loaded() const;
     void unload();
+
+    // What the last clip cost, per graph. The numbers belong to the clip whose text was just
+    // delivered: read after transcribed, or after the blocking call returns. Read during a
+    // decode they are the clip before it, never a tear of the one running.
     Dictionary last_timings() const;
 
     // One phrase naming the family of model this reads, for a menu or a log line. A host
@@ -125,7 +129,8 @@ public:
 
     // How sure the model was that the last clip held no speech at all, from 0 to 1, or -1
     // from a family that has no such signal. Read after the answer, like the timings: the
-    // number belongs to the clip whose text was just delivered.
+    // number belongs to the clip whose text was just delivered, and during a decode it is the
+    // previous clip's.
     virtual double last_no_speech_prob() const;
 
     // What the model took the last clip's language to be, as a code, with how sure it was and
