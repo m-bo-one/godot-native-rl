@@ -1,6 +1,8 @@
 #ifndef NCNN_ASR_H
 #define NCNN_ASR_H
 
+#include "ncnn_graph.h"
+
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -19,18 +21,6 @@
 #include <vector>
 
 namespace godot {
-
-// One graph of an export together with the two buffers it was read out of. ncnn aliases the
-// weight bytes rather than copying them, so dropping the .bin buffer would leave every layer
-// of the net pointing into freed memory on the next extract.
-struct NcnnGraph {
-    ncnn::Net net;
-    PackedByteArray param;
-    PackedByteArray weights;
-
-    bool load(const String &param_path, const String &bin_path, int num_threads);
-    void clear();
-};
 
 // What every speech recogniser on ncnn shares, with the model itself left to a subclass: the
 // one worker thread, the flag that says the graphs are taken, the delivery on the main thread
