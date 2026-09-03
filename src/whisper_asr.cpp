@@ -312,6 +312,36 @@ double WhisperASR::last_no_speech_prob() const {
     return no_speech_prob;
 }
 
+String WhisperASR::last_detected_language() const {
+    return language_index[0] < 0 ? String() : String(LANGUAGES[language_index[0]]);
+}
+
+double WhisperASR::last_language_prob() const {
+    return language_index[0] < 0 ? 0.0 : language_share[0];
+}
+
+Array WhisperASR::last_language_candidates() const {
+    Array out;
+    for (int i = 0; i < 3; i++) {
+        if (language_index[i] < 0) {
+            break;
+        }
+        Dictionary one;
+        one["code"] = String(LANGUAGES[language_index[i]]);
+        one["prob"] = language_share[i];
+        out.push_back(one);
+    }
+    return out;
+}
+
+void WhisperASR::set_detect_language(bool enabled) {
+    detecting_language.store(enabled);
+}
+
+bool WhisperASR::is_detecting_language() const {
+    return detecting_language.load();
+}
+
 void WhisperASR::_unload_graphs() {
     encoder.clear();
     decoder.clear();
@@ -330,6 +360,9 @@ void WhisperASR::_report_timings(Dictionary &out) const {
     out["decoder_ms"] = decoder_ms;
     out["tokens"] = token_count;
     out["no_speech_prob"] = no_speech_prob;
+    out["detected_language"] = last_detected_language();
+    out["language_prob"] = last_language_prob();
+    out["language_candidates"] = last_language_candidates();
 }
 
 // Whisper's own log-mel, computed here rather than by the export's fbank graph: ncnn's
@@ -426,6 +459,10 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
 String WhisperASR::_decode(const std::vector<float> &samples) {
     const double started = now_ms();
     no_speech_prob = 0.0;
+    for (int i = 0; i < 3; i++) {
+        language_index[i] = -1;
+        language_share[i] = 0.0;
+    }
 
     std::vector<float> audio((size_t)CLIP_SAMPLES, 0.0f);
     const size_t taken = samples.size() < (size_t)CLIP_SAMPLES ? samples.size() : (size_t)CLIP_SAMPLES;
@@ -554,10 +591,10 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
 
         // The prompt is fed for its caches and, past the first token, never asked what comes
         // next. The step after the start token is the exception: it is where the model chooses
-        // between the languages and the no-speech token, so it is projected for that number
-        // alone and its choice is thrown away in favour of the language the host named.
+        // between the languages and the no-speech token, so it is projected for those numbers
+        // and its choice is thrown away in favour of the language the host named.
         if (position == 0) {
-            no_speech_prob = no_speech_share(hidden);
+            read_first_step(hidden);
         }
         if (position + 1 < (int)prompt.size()) {
             token = prompt[(size_t)position + 1];
@@ -592,15 +629,20 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
     return written;
 }
 
-// The no-speech token's share of the distribution after the start token, which is the model's
-// own opinion of whether anybody spoke. Taken against the maximum so the exponentials stay
-// finite; a projection that fails answers zero, which is a clip judged by its words alone.
-double WhisperASR::no_speech_share(const ncnn::Mat &hidden) {
+// The distribution after the start token, read for two things: the no-speech token's share of
+// the whole of it, which is the model's own opinion of whether anybody spoke, and -- when asked
+// -- the ninety-nine language tokens against each other, which is what the model took the
+// language to be. Both taken against a maximum so the exponentials stay finite; a projection
+// that fails leaves zero and nothing, which is a clip judged by its words alone.
+//
+// The language read is noisy on a clip of a second or two and tiny is noisier than base; it
+// is information beside the text, and the transcription follows the language the host named.
+void WhisperASR::read_first_step(const ncnn::Mat &hidden) {
     ncnn::Mat logits;
     ncnn::Extractor ex = proj_out.net.create_extractor();
     ex.input("in0", hidden);
     if (ex.extract("out0", logits) != 0 || no_speech >= logits.w) {
-        return 0.0;
+        return;
     }
     const float *scores = logits.row(0);
     float top = scores[0];
@@ -613,8 +655,44 @@ double WhisperASR::no_speech_share(const ncnn::Mat &hidden) {
     for (int i = 0; i < logits.w; i++) {
         sum += exp((double)(scores[i] - top));
     }
-    return exp((double)(scores[no_speech] - top)) / sum;
+    no_speech_prob = exp((double)(scores[no_speech] - top)) / sum;
+
+    if (!detecting_language.load()) {
+        return;
+    }
+    // The language tokens sit directly after the start token, in the order of the table.
+    const int first = end_of_text + 2;
+    if (first + LANGUAGE_COUNT > logits.w) {
+        return;
+    }
+    float top_language = scores[first];
+    for (int i = 1; i < LANGUAGE_COUNT; i++) {
+        if (scores[first + i] > top_language) {
+            top_language = scores[first + i];
+        }
+    }
+    double language_sum = 0.0;
+    for (int i = 0; i < LANGUAGE_COUNT; i++) {
+        language_sum += exp((double)(scores[first + i] - top_language));
+    }
+    for (int rank = 0; rank < 3; rank++) {
+        int best = -1;
+        for (int i = 0; i < LANGUAGE_COUNT; i++) {
+            bool taken = false;
+            for (int r = 0; r < rank; r++) {
+                taken = taken || language_index[r] == i;
+            }
+            if (!taken && (best < 0 || scores[first + i] > scores[first + best])) {
+                best = i;
+            }
+        }
+        language_index[rank] = best;
+        language_share[rank] = exp((double)(scores[first + best] - top_language)) / language_sum;
+    }
 }
 
 void WhisperASR::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_detect_language", "enabled"),
+            &WhisperASR::set_detect_language);
+    ClassDB::bind_method(D_METHOD("is_detecting_language"), &WhisperASR::is_detecting_language);
 }

@@ -164,6 +164,18 @@ double NcnnASR::last_no_speech_prob() const {
     return -1.0;
 }
 
+String NcnnASR::last_detected_language() const {
+    return String();
+}
+
+double NcnnASR::last_language_prob() const {
+    return 0.0;
+}
+
+Array NcnnASR::last_language_candidates() const {
+    return Array();
+}
+
 // One clip through the family's graphs, at the rate they take. The decode is fenced: an
 // exception out of it would unwind into the engine, which has no handler and dies, where an
 // empty answer is a clip the host is told held nothing.
@@ -264,6 +276,10 @@ void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("last_timings"), &NcnnASR::last_timings);
     ClassDB::bind_method(D_METHOD("describe_family"), &NcnnASR::describe_family);
     ClassDB::bind_method(D_METHOD("last_no_speech_prob"), &NcnnASR::last_no_speech_prob);
+    ClassDB::bind_method(D_METHOD("last_detected_language"), &NcnnASR::last_detected_language);
+    ClassDB::bind_method(D_METHOD("last_language_prob"), &NcnnASR::last_language_prob);
+    ClassDB::bind_method(D_METHOD("last_language_candidates"),
+            &NcnnASR::last_language_candidates);
 
     ADD_SIGNAL(MethodInfo("transcribed", PropertyInfo(Variant::STRING, "text")));
 }

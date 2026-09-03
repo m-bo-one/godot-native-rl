@@ -3,6 +3,9 @@
 
 #include "ncnn_asr.h"
 
+#include <godot_cpp/variant/array.hpp>
+
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -64,6 +67,14 @@ class WhisperASR : public NcnnASR {
     int no_speech = 0;
     double no_speech_prob = 0.0;
 
+    // What the model took the language to be at that same step, as the three likeliest of the
+    // ninety-nine with their shares, most likely first. Information beside the text and never
+    // the policy: the clip is transcribed in the language the host named. Off, the step is
+    // still projected for the no-speech share and only the language part of it is skipped.
+    std::atomic<bool> detecting_language{true};
+    int language_index[3] = {-1, -1, -1};
+    double language_share[3] = {0.0, 0.0, 0.0};
+
     // What the last decode cost, in milliseconds, and how many tokens it wrote. Written by
     // whichever thread decoded and read after it has finished, which is what the busy flag
     // orders; a read while a decode runs sees the previous clip's numbers rather than a tear.
@@ -86,11 +97,17 @@ public:
 
     String describe_family() const override;
     double last_no_speech_prob() const override;
+    String last_detected_language() const override;
+    double last_language_prob() const override;
+    Array last_language_candidates() const override;
+
+    void set_detect_language(bool enabled);
+    bool is_detecting_language() const;
 
 private:
     void log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const;
     std::vector<int> run_decoder(const ncnn::Mat &states);
-    double no_speech_share(const ncnn::Mat &hidden);
+    void read_first_step(const ncnn::Mat &hidden);
 };
 
 } // namespace godot

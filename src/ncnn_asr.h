@@ -2,6 +2,7 @@
 #define NCNN_ASR_H
 
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
@@ -111,6 +112,14 @@ public:
     // from a family that has no such signal. Read after the answer, like the timings: the
     // number belongs to the clip whose text was just delivered.
     virtual double last_no_speech_prob() const;
+
+    // What the model took the last clip's language to be, as a code, with how sure it was and
+    // the likeliest few as [{code, prob}]. Information and never the policy: the clip was
+    // transcribed in the language the host named. A family without the signal answers "",
+    // zero and an empty list.
+    virtual String last_detected_language() const;
+    virtual double last_language_prob() const;
+    virtual Array last_language_candidates() const;
 
 private:
     String run(const PackedFloat32Array &samples, int sample_rate);
