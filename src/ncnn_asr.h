@@ -1,0 +1,119 @@
+#ifndef NCNN_ASR_H
+#define NCNN_ASR_H
+
+#include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/string.hpp>
+
+#include <mat.h>
+#include <net.h>
+
+#include <atomic>
+#include <cstdint>
+#include <thread>
+#include <vector>
+
+namespace godot {
+
+// One graph of an export together with the two buffers it was read out of. ncnn aliases the
+// weight bytes rather than copying them, so dropping the .bin buffer would leave every layer
+// of the net pointing into freed memory on the next extract.
+struct NcnnGraph {
+    ncnn::Net net;
+    PackedByteArray param;
+    PackedByteArray weights;
+
+    bool load(const String &param_path, const String &bin_path, int num_threads);
+    void clear();
+};
+
+// What every speech recogniser on ncnn shares, with the model itself left to a subclass: the
+// one worker thread, the flag that says the graphs are taken, the delivery on the main thread
+// and the resampling to sixteen kilohertz. A family of graphs -- Whisper, or another -- fills
+// in how its folder is read and how a clip becomes text, and nothing else.
+//
+// The graphs are used from one thread at a time. transcribe() decodes on the caller's thread,
+// transcribe_async() hands the same work to one worker and delivers the text on the main
+// thread; each refuses while the other holds them, or the extractors run re-entrant.
+class NcnnASR : public RefCounted {
+    GDCLASS(NcnnASR, RefCounted)
+
+    // The one worker, the flag that says the graphs are taken, and the text an answer will
+    // carry. The flag is raised in one atomic step and lowered by whichever path owns it --
+    // the blocking decode as it returns, the worker's delivery on the main thread.
+    std::thread worker;
+    std::atomic<bool> busy{false};
+    String pending_text;
+
+    // Which model the worker was started against. unload() and load() move it on, so a
+    // result delivered after either is dropped rather than reported for a model that went.
+    std::atomic<int64_t> epoch{0};
+
+    bool loaded = false;
+    double load_ms = 0.0;
+    double total_ms = 0.0;
+
+protected:
+    static void _bind_methods();
+
+    // How many threads the graphs were loaded with. Read by a subclass that splits its own
+    // work -- a front end computed by hand -- across the same number the graphs run on.
+    int threads = 1;
+
+    // The two halves a family supplies. _load_graphs reads its own files out of the folder
+    // and refuses with false; _decode takes sixteen-kilohertz mono in [-1, 1] and answers the
+    // text, empty for a clip it could not read. Both run with the busy flag already held.
+    virtual bool _load_graphs(const String &folder, const String &language, int num_threads) = 0;
+    virtual String _decode(const std::vector<float> &samples) = 0;
+    virtual void _unload_graphs() = 0;
+
+    // What the last decode cost inside the family, added to the two numbers kept here. Read
+    // after the flag is lowered; a read during a decode sees the previous clip's numbers.
+    virtual void _report_timings(Dictionary &out) const {}
+
+    // A Mat ncnn owns, filled from somebody else's memory. Every input has to go through
+    // this: a Mat wrapping a foreign pointer carries a null refcount, and the first in-place
+    // layer to consume it dereferences that null and takes the process down.
+    static ncnn::Mat owned(const float *source, int w, int h);
+
+    // The same for a single whole number, which is what an embedding graph indexes with. The
+    // lookup reads the blob's four bytes as an int rather than converting them, so a float
+    // index is a bit pattern past the last row -- and out of range is clamped, never reported.
+    static ncnn::Mat owned_index(int value);
+
+    // The one file of a folder carrying a fragment and a suffix. Fragments rather than whole
+    // names: an export ships them under whatever prefix it was written with, and a folder
+    // taken from anywhere has to work without somebody renaming its files first.
+    static String pick(const PackedStringArray &files, const String &mark, const String &suffix);
+
+    static double now_ms();
+
+public:
+    NcnnASR() = default;
+    ~NcnnASR();
+
+    bool load(const String &model_dir, const String &language, int num_threads);
+    String transcribe(const PackedFloat32Array &samples, int sample_rate);
+    bool transcribe_async(const PackedFloat32Array &samples, int sample_rate);
+    bool is_busy() const;
+    bool is_loaded() const;
+    void unload();
+    Dictionary last_timings() const;
+
+    // One phrase naming the family of model this reads, for a menu or a log line. A host
+    // that lists recognisers shows this rather than the class name.
+    virtual String describe_family() const;
+
+private:
+    String run(const PackedFloat32Array &samples, int sample_rate);
+    void work(PackedFloat32Array samples, int sample_rate, int64_t at);
+    void deliver(int64_t at);
+    void join_worker();
+};
+
+} // namespace godot
+
+#endif // NCNN_ASR_H

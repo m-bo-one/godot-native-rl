@@ -1,11 +1,7 @@
-#include "whisper_recognizer.h"
+#include "whisper_asr.h"
 
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
-#include <godot_cpp/classes/time.hpp>
-#include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/callable_method_pointer.hpp>
-#include <godot_cpp/variant/packed_string_array.hpp>
 
 #include <cmath>
 #include <cstdio>
@@ -18,7 +14,6 @@ namespace {
 // What a Whisper clip is: thirty seconds at sixteen kilohertz, and the mel frames made of
 // them. The window is 400 samples every 160, centred, which is 3001 frames -- the encoder
 // wants one fewer, and feeding it 3001 is a silent shape error rather than a refusal.
-constexpr int SAMPLE_RATE = 16000;
 constexpr int CLIP_SAMPLES = 480000;
 constexpr int MEL_BANDS = 80;
 constexpr int MEL_FRAMES = 3000;
@@ -58,59 +53,6 @@ constexpr int LANGUAGE_COUNT = 99;
 // written down: end of text is the first one after it, and the four the prompt needs follow.
 constexpr int TRANSCRIBE_AFTER_TRANSLATE = 1;
 constexpr int NOTIMESTAMPS_AFTER_TRANSCRIBE = 4;
-
-// Takes the busy flag in one atomic step or reports that another path holds it, and gives it
-// back unless the turn was handed on. Reading the flag and raising it separately lets two
-// callers both start a worker, and assigning a thread over a joinable one is std::terminate().
-struct BusyGuard {
-    std::atomic<bool> *held = nullptr;
-
-    explicit BusyGuard(std::atomic<bool> &flag) {
-        bool expected = false;
-        if (flag.compare_exchange_strong(expected, true)) {
-            held = &flag;
-        }
-    }
-
-    ~BusyGuard() {
-        if (held != nullptr) {
-            held->store(false);
-        }
-    }
-
-    BusyGuard(const BusyGuard &) = delete;
-    BusyGuard &operator=(const BusyGuard &) = delete;
-
-    bool taken() const { return held != nullptr; }
-
-    // The flag stays raised and this stops owning it: the delivery on the main thread is
-    // what lowers it, which is what keeps the graphs taken until the answer has gone out.
-    void hand_on() { held = nullptr; }
-};
-
-// A Mat ncnn owns, filled from somebody else's memory. Every input has to go through this:
-// a Mat wrapping a foreign pointer carries a null refcount, and the first in-place layer to
-// consume it dereferences that null and takes the process down.
-ncnn::Mat owned(const float *source, int w, int h) {
-    ncnn::Mat mat;
-    mat.create(w, h);
-    if (!mat.empty() && source != nullptr) {
-        memcpy(mat.data, source, (size_t)w * (size_t)h * sizeof(float));
-    }
-    return mat;
-}
-
-// The same for a single whole number, which is what the two embedding graphs index with.
-// The lookup reads the blob's four bytes as an int rather than converting them, so a float
-// index is a bit pattern past the last row -- and out of range is clamped, never reported.
-ncnn::Mat owned_index(int value) {
-    ncnn::Mat mat;
-    mat.create(1);
-    if (!mat.empty()) {
-        ((int *)mat.data)[0] = value;
-    }
-    return mat;
-}
 
 // The GPT-2 byte-level alphabet inverted: every letter a vocabulary line may carry back to
 // the byte it stands for. Without it a token is the remapped spelling rather than the word,
@@ -160,23 +102,6 @@ std::string line_to_bytes(const char *line, int length, const short *table) {
         }
     }
     return out;
-}
-
-// The one file of a folder carrying a fragment and a suffix. Fragments rather than whole
-// names: an export ships them under whatever prefix it was written with, and a folder taken
-// from anywhere has to work without somebody renaming six files first.
-String pick(const PackedStringArray &files, const String &mark, const String &suffix) {
-    for (int i = 0; i < files.size(); i++) {
-        const String lower = files[i].to_lower();
-        if (lower.contains(mark) && lower.ends_with(suffix)) {
-            return files[i];
-        }
-    }
-    return String();
-}
-
-double now_ms() {
-    return (double)Time::get_singleton()->get_ticks_usec() / 1000.0;
 }
 
 // How many attention caches the decoder declares, counted off its own structure: one pair per
@@ -265,46 +190,21 @@ void SmallFft::run(float *re, float *im, float *work_re, float *work_im) const {
             cosines.data(), sines.data(), work_re, work_im);
 }
 
-bool WhisperGraph::load(const String &param_path, const String &bin_path, int num_threads) {
-    clear();
-    net.opt.num_threads = num_threads;
-    net.opt.use_vulkan_compute = false;
-
-    param = FileAccess::get_file_as_bytes(param_path);
-    weights = FileAccess::get_file_as_bytes(bin_path);
-    if (param.is_empty() || weights.is_empty()) {
-        return false;
-    }
-    // The parser reads the structure as a C string and stops at the first zero byte, which a
-    // file has no reason to end with. Appended here rather than trusted to the reader.
-    param.append(0);
-    if (net.load_param_mem((const char *)param.ptr()) != 0) {
-        return false;
-    }
-    // Answers how many bytes it took, and zero means it took none. The buffer stays in this
-    // object because every weight in the graph is a pointer into it rather than a copy.
-    return net.load_model((const unsigned char *)weights.ptr()) != 0;
-}
-
-void WhisperGraph::clear() {
-    net.clear();
-    param = PackedByteArray();
-    weights = PackedByteArray();
-}
-
-WhisperRecognizer::~WhisperRecognizer() {
+// The graphs are this class's, so they are given back here and not in the base's destructor,
+// which runs after this one and would call into a table that is already gone.
+WhisperASR::~WhisperASR() {
     unload();
 }
 
-// The folder is read through the engine rather than opened by a library, so a model inside an
-// exported pack loads exactly as a folder beside the game does. A load while a turn is in
-// flight would swap the graphs under the worker, so the worker is joined first.
-bool WhisperRecognizer::load(const String &model_dir, const String &language, int num_threads) {
-    unload();
-    const double started = now_ms();
-    threads = num_threads > 0 ? num_threads : 1;
+String WhisperASR::describe_family() const {
+    return "Whisper (ncnn)";
+}
 
-    Ref<DirAccess> dir = DirAccess::open(model_dir);
+// Six files and a vocabulary out of one folder, each found by the fragment naming its part.
+// Refused as a whole when any is missing: the seam in front of this names the file, and a
+// half-loaded model answering some clips would be a worse report than a load that said no.
+bool WhisperASR::_load_graphs(const String &folder, const String &language, int num_threads) {
+    Ref<DirAccess> dir = DirAccess::open(folder);
     if (dir.is_null()) {
         return false;
     }
@@ -317,7 +217,7 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
     }
 
     struct Part {
-        WhisperGraph *graph;
+        NcnnGraph *graph;
         const char *mark;
     };
     const Part parts[] = {
@@ -330,29 +230,24 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
     for (const Part &part : parts) {
         const String param_name = pick(files, part.mark, ".ncnn.param");
         if (param_name.is_empty()) {
-            unload();
             return false;
         }
         const String bin_name = param_name.trim_suffix(".param") + ".bin";
-        if (!part.graph->load(model_dir.path_join(param_name),
-                    model_dir.path_join(bin_name), threads)) {
-            unload();
+        if (!part.graph->load(folder.path_join(param_name), folder.path_join(bin_name),
+                    num_threads)) {
             return false;
         }
     }
 
     cache_pairs = count_cache_pairs(decoder.param);
     if (cache_pairs <= 0 || cache_pairs > MOST_CACHE_PAIRS) {
-        unload();
         return false;
     }
 
     // The fbank graph's weights are its mel filterbank and nothing else -- one MemoryData
     // layer of 201 by 80 floats, stored raw. Anything else in that file is another export.
-    const PackedByteArray filters = FileAccess::get_file_as_bytes(
-            model_dir.path_join(filters_name));
+    const PackedByteArray filters = FileAccess::get_file_as_bytes(folder.path_join(filters_name));
     if (filters.size() != MEL_BANDS * SPECTRUM_BINS * (int)sizeof(float)) {
-        unload();
         return false;
     }
     mel_filters.resize((size_t)MEL_BANDS * SPECTRUM_BINS);
@@ -361,9 +256,8 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
 
     short table[512];
     build_byte_decoder(table);
-    const PackedByteArray raw = FileAccess::get_file_as_bytes(model_dir.path_join(vocab_name));
+    const PackedByteArray raw = FileAccess::get_file_as_bytes(folder.path_join(vocab_name));
     if (raw.is_empty()) {
-        unload();
         return false;
     }
     vocab.clear();
@@ -393,7 +287,6 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
         }
     }
     if (language_index < 0 || vocab.empty()) {
-        unload();
         return false;
     }
 
@@ -408,50 +301,10 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
     prompt.push_back(start_of_transcript + 1 + language_index);
     prompt.push_back(transcribe);
     prompt.push_back(transcribe + NOTIMESTAMPS_AFTER_TRANSCRIBE);
-
-    loaded = true;
-    load_ms = now_ms() - started;
     return true;
 }
 
-String WhisperRecognizer::transcribe(const PackedFloat32Array &samples, int sample_rate) {
-    BusyGuard guard(busy);
-    if (!guard.taken() || !loaded || samples.is_empty()) {
-        return String();
-    }
-    return decode(samples, sample_rate);
-}
-
-bool WhisperRecognizer::transcribe_async(const PackedFloat32Array &samples, int sample_rate) {
-    BusyGuard guard(busy);
-    if (!guard.taken() || !loaded || samples.is_empty()) {
-        return false;
-    }
-    join_worker();
-    // A thread that could not be started answers false with the flag given back, rather than
-    // letting the system error unwind into the engine, which has no handler for one.
-    try {
-        worker = std::thread(&WhisperRecognizer::work, this, samples, sample_rate, epoch.load());
-    } catch (...) {
-        return false;
-    }
-    guard.hand_on();
-    return true;
-}
-
-bool WhisperRecognizer::is_busy() const {
-    return busy.load();
-}
-
-bool WhisperRecognizer::is_loaded() const {
-    return loaded;
-}
-
-void WhisperRecognizer::unload() {
-    epoch.fetch_add(1);
-    join_worker();
-    busy.store(false);
-    loaded = false;
+void WhisperASR::_unload_graphs() {
     encoder.clear();
     decoder.clear();
     embed_token.clear();
@@ -460,27 +313,21 @@ void WhisperRecognizer::unload() {
     mel_filters.clear();
     vocab.clear();
     prompt.clear();
+    cache_pairs = 0;
 }
 
-// What the last clip cost, so a project can measure this road rather than trust a number
-// written down somewhere. The numbers are of one decode: reading them while another runs
-// answers the one before it.
-Dictionary WhisperRecognizer::last_timings() const {
-    Dictionary out;
-    out["load_ms"] = load_ms;
+void WhisperASR::_report_timings(Dictionary &out) const {
     out["mel_ms"] = mel_ms;
     out["encoder_ms"] = encoder_ms;
     out["decoder_ms"] = decoder_ms;
-    out["total_ms"] = total_ms;
     out["tokens"] = token_count;
-    return out;
 }
 
 // Whisper's own log-mel, computed here rather than by the export's fbank graph: ncnn's
 // Spectrogram layer costs more for one clip than the encoder does. The frames are split
-// across the threads the model was loaded with, which is the whole of the parallelism --
-// the library itself is built with OpenMP off so that nothing has to travel beside it.
-void WhisperRecognizer::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const {
+// across the threads the model was loaded with, so the front end and the graphs run on the
+// same number of cores.
+void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const {
     // Reflect padding by half a window, so frame t is centred on sample t * 160 exactly as
     // torch's centred stft has it. Without it every frame is half a window early.
     const int pad = FFT_SIZE / 2;
@@ -564,30 +411,15 @@ void WhisperRecognizer::log_mel(const std::vector<float> &audio, ncnn::Mat &mel)
     }
 }
 
-// One clip through the graphs. The samples are padded or trimmed to Whisper's own thirty
-// seconds, which is the only length the encoder has a shape for; a rate that is not sixteen
-// kilohertz is stretched to it, because a clip read at the wrong rate is words at a wrong pitch.
-String WhisperRecognizer::decode(const PackedFloat32Array &samples, int sample_rate) {
+// One clip through the graphs. The samples arrive at sixteen kilohertz and are padded or
+// trimmed to Whisper's own thirty seconds, which is the only length the encoder has a shape
+// for; the text is the bytes of every token run together and read as UTF-8 once.
+String WhisperASR::_decode(const std::vector<float> &samples) {
     const double started = now_ms();
 
     std::vector<float> audio((size_t)CLIP_SAMPLES, 0.0f);
-    const float *source = samples.ptr();
-    const int count = samples.size();
-    if (sample_rate == SAMPLE_RATE || sample_rate <= 0) {
-        const int taken = count < CLIP_SAMPLES ? count : CLIP_SAMPLES;
-        memcpy(audio.data(), source, (size_t)taken * sizeof(float));
-    } else {
-        const double step = (double)sample_rate / (double)SAMPLE_RATE;
-        const int taken = (int)((double)count / step);
-        const int limit = taken < CLIP_SAMPLES ? taken : CLIP_SAMPLES;
-        for (int i = 0; i < limit; i++) {
-            const double at = (double)i * step;
-            const int left = (int)at;
-            const int right = left + 1 < count ? left + 1 : left;
-            const float fraction = (float)(at - (double)left);
-            audio[(size_t)i] = source[left] * (1.0f - fraction) + source[right] * fraction;
-        }
-    }
+    const size_t taken = samples.size() < (size_t)CLIP_SAMPLES ? samples.size() : (size_t)CLIP_SAMPLES;
+    memcpy(audio.data(), samples.data(), taken * sizeof(float));
 
     ncnn::Mat mel;
     mel.create(MEL_FRAMES, MEL_BANDS);
@@ -622,7 +454,6 @@ String WhisperRecognizer::decode(const PackedFloat32Array &samples, int sample_r
     mel_ms = after_mel - started;
     encoder_ms = after_encoder - after_mel;
     decoder_ms = after_decoder - after_encoder;
-    total_ms = after_decoder - started;
     token_count = (int)written.size();
     // The bytes are UTF-8 only once the whole run is concatenated: a Cyrillic letter routinely
     // straddles two tokens, so decoding token by token would produce mojibake. Named as UTF-8
@@ -632,10 +463,10 @@ String WhisperRecognizer::decode(const PackedFloat32Array &samples, int sample_r
 }
 
 // The greedy loop. One token per step: the prompt is walked through first so the caches hold
-// it, then whatever the graph writes is fed back until it says it is finished. The sixteen
-// caches stay ncnn's own objects and are handed straight back, and the mask grows one column
-// per step -- a mask of the wrong width has the attention reading past the end of its row.
-std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
+// it, then whatever the graph writes is fed back until it says it is finished. The caches
+// stay ncnn's own objects and are handed straight back, and the mask grows one column per
+// step -- a mask of the wrong width has the attention reading past the end of its row.
+std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
     std::vector<int> written;
     // Left unset on the first step. An Input layer is not re-run to produce a blob, and the
     // attention reads an empty cache as no history, which is exactly what step one has.
@@ -744,40 +575,5 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
     return written;
 }
 
-// The worker's whole life: decode, then hand the text to the main thread. Emitting from
-// here instead would put a signal on a thread the engine's listeners are not written for.
-void WhisperRecognizer::work(PackedFloat32Array samples, int sample_rate, int64_t at) {
-    pending_text = decode(samples, sample_rate);
-    callable_mp(this, &WhisperRecognizer::deliver).call_deferred(at);
-}
-
-// The delivery, on the main thread. A turn whose model was unloaded or replaced while it
-// ran is dropped: the flag it would clear belongs to whatever was started after it.
-void WhisperRecognizer::deliver(int64_t at) {
-    if (at != epoch.load() || !busy.load()) {
-        return;
-    }
-    busy.store(false);
-    emit_signal("transcribed", pending_text);
-}
-
-void WhisperRecognizer::join_worker() {
-    if (worker.joinable()) {
-        worker.join();
-    }
-}
-
-void WhisperRecognizer::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("load", "model_dir", "language", "num_threads"),
-            &WhisperRecognizer::load);
-    ClassDB::bind_method(D_METHOD("transcribe", "samples", "sample_rate"),
-            &WhisperRecognizer::transcribe);
-    ClassDB::bind_method(D_METHOD("transcribe_async", "samples", "sample_rate"),
-            &WhisperRecognizer::transcribe_async);
-    ClassDB::bind_method(D_METHOD("is_busy"), &WhisperRecognizer::is_busy);
-    ClassDB::bind_method(D_METHOD("is_loaded"), &WhisperRecognizer::is_loaded);
-    ClassDB::bind_method(D_METHOD("unload"), &WhisperRecognizer::unload);
-    ClassDB::bind_method(D_METHOD("last_timings"), &WhisperRecognizer::last_timings);
-
-    ADD_SIGNAL(MethodInfo("transcribed", PropertyInfo(Variant::STRING, "text")));
+void WhisperASR::_bind_methods() {
 }

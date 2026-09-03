@@ -1,7 +1,8 @@
 #include "register_types.h"
 
+#include "ncnn_asr.h"
 #include "ncnn_runner.h"
-#include "whisper_recognizer.h"
+#include "whisper_asr.h"
 
 #include <godot_cpp/godot.hpp>
 
@@ -13,7 +14,10 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     }
 
     ClassDB::register_class<NcnnRunner>();
-    ClassDB::register_class<WhisperRecognizer>();
+    // The recogniser every family extends is registered so a script can ask for it by name
+    // and hold any family as one type; it has no instances of its own.
+    GDREGISTER_ABSTRACT_CLASS(NcnnASR);
+    GDREGISTER_CLASS(WhisperASR);
 }
 
 void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
