@@ -107,6 +107,11 @@ public:
     // that lists recognisers shows this rather than the class name.
     virtual String describe_family() const;
 
+    // How sure the model was that the last clip held no speech at all, from 0 to 1, or -1
+    // from a family that has no such signal. Read after the answer, like the timings: the
+    // number belongs to the clip whose text was just delivered.
+    virtual double last_no_speech_prob() const;
+
 private:
     String run(const PackedFloat32Array &samples, int sample_rate);
     void work(PackedFloat32Array samples, int sample_rate, int64_t at);

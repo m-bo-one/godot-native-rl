@@ -58,6 +58,12 @@ class WhisperASR : public NcnnASR {
     std::vector<int> prompt;
     int end_of_text = 0;
 
+    // The token the model writes where it heard nobody, and how likely it found it at the
+    // first step of the last clip. The number is the model's own opinion of the silence; a
+    // seam reads it beside the text and drops what a graph narrated over a quiet room.
+    int no_speech = 0;
+    double no_speech_prob = 0.0;
+
     // What the last decode cost, in milliseconds, and how many tokens it wrote. Written by
     // whichever thread decoded and read after it has finished, which is what the busy flag
     // orders; a read while a decode runs sees the previous clip's numbers rather than a tear.
@@ -79,10 +85,12 @@ public:
     ~WhisperASR();
 
     String describe_family() const override;
+    double last_no_speech_prob() const override;
 
 private:
     void log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const;
     std::vector<int> run_decoder(const ncnn::Mat &states);
+    double no_speech_share(const ncnn::Mat &hidden);
 };
 
 } // namespace godot

@@ -50,8 +50,11 @@ const char *LANGUAGES[] = {
 constexpr int LANGUAGE_COUNT = 99;
 
 // Where the special tokens sit above the vocabulary, counted from its own size rather than
-// written down: end of text is the first one after it, and the four the prompt needs follow.
+// written down: end of text is the first one after it, then start, the languages, translate,
+// transcribe, and after transcribe the language-model start, the previous-text start, the
+// no-speech token and the no-timestamps token, in that order.
 constexpr int TRANSCRIBE_AFTER_TRANSLATE = 1;
+constexpr int NOSPEECH_AFTER_TRANSCRIBE = 3;
 constexpr int NOTIMESTAMPS_AFTER_TRANSCRIBE = 4;
 
 // The GPT-2 byte-level alphabet inverted: every letter a vocabulary line may carry back to
@@ -196,10 +199,6 @@ WhisperASR::~WhisperASR() {
     unload();
 }
 
-String WhisperASR::describe_family() const {
-    return "Whisper (ncnn)";
-}
-
 // Six files and a vocabulary out of one folder, each found by the fragment naming its part.
 // Refused as a whole when any is missing: the seam in front of this names the file, and a
 // half-loaded model answering some clips would be a worse report than a load that said no.
@@ -301,7 +300,16 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
     prompt.push_back(start_of_transcript + 1 + language_index);
     prompt.push_back(transcribe);
     prompt.push_back(transcribe + NOTIMESTAMPS_AFTER_TRANSCRIBE);
+    no_speech = transcribe + NOSPEECH_AFTER_TRANSCRIBE;
     return true;
+}
+
+String WhisperASR::describe_family() const {
+    return "Whisper (ncnn)";
+}
+
+double WhisperASR::last_no_speech_prob() const {
+    return no_speech_prob;
 }
 
 void WhisperASR::_unload_graphs() {
@@ -321,6 +329,7 @@ void WhisperASR::_report_timings(Dictionary &out) const {
     out["encoder_ms"] = encoder_ms;
     out["decoder_ms"] = decoder_ms;
     out["tokens"] = token_count;
+    out["no_speech_prob"] = no_speech_prob;
 }
 
 // Whisper's own log-mel, computed here rather than by the export's fbank graph: ncnn's
@@ -416,6 +425,7 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
 // for; the text is the bytes of every token run together and read as UTF-8 once.
 String WhisperASR::_decode(const std::vector<float> &samples) {
     const double started = now_ms();
+    no_speech_prob = 0.0;
 
     std::vector<float> audio((size_t)CLIP_SAMPLES, 0.0f);
     const size_t taken = samples.size() < (size_t)CLIP_SAMPLES ? samples.size() : (size_t)CLIP_SAMPLES;
@@ -542,8 +552,13 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
         }
         cache.swap(next);
 
-        // The prompt is fed for its caches and never asked what comes next: the first thing
-        // worth projecting is the step after the last of it.
+        // The prompt is fed for its caches and, past the first token, never asked what comes
+        // next. The step after the start token is the exception: it is where the model chooses
+        // between the languages and the no-speech token, so it is projected for that number
+        // alone and its choice is thrown away in favour of the language the host named.
+        if (position == 0) {
+            no_speech_prob = no_speech_share(hidden);
+        }
         if (position + 1 < (int)prompt.size()) {
             token = prompt[(size_t)position + 1];
             continue;
@@ -566,13 +581,39 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
                 best = i;
             }
         }
-        if (best == end_of_text) {
+        // Anything above the vocabulary is grammar rather than a word -- the end, the no-speech
+        // token, a timestamp -- and a greedy loop that fed one back would narrate from there.
+        if (best >= (int)vocab.size()) {
             break;
         }
         written.push_back(best);
         token = best;
     }
     return written;
+}
+
+// The no-speech token's share of the distribution after the start token, which is the model's
+// own opinion of whether anybody spoke. Taken against the maximum so the exponentials stay
+// finite; a projection that fails answers zero, which is a clip judged by its words alone.
+double WhisperASR::no_speech_share(const ncnn::Mat &hidden) {
+    ncnn::Mat logits;
+    ncnn::Extractor ex = proj_out.net.create_extractor();
+    ex.input("in0", hidden);
+    if (ex.extract("out0", logits) != 0 || no_speech >= logits.w) {
+        return 0.0;
+    }
+    const float *scores = logits.row(0);
+    float top = scores[0];
+    for (int i = 1; i < logits.w; i++) {
+        if (scores[i] > top) {
+            top = scores[i];
+        }
+    }
+    double sum = 0.0;
+    for (int i = 0; i < logits.w; i++) {
+        sum += exp((double)(scores[i] - top));
+    }
+    return exp((double)(scores[no_speech] - top)) / sum;
 }
 
 void WhisperASR::_bind_methods() {
