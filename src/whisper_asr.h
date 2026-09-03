@@ -2,6 +2,7 @@
 #define WHISPER_ASR_H
 
 #include "ncnn_asr.h"
+#include "small_fft.h"
 
 #include <godot_cpp/variant/array.hpp>
 
@@ -10,20 +11,6 @@
 #include <vector>
 
 namespace godot {
-
-// A complex FFT for a length whose factors are small. It splits on the smallest factor and
-// recurses, which for Whisper's 400-point window is a few thousand operations per frame
-// against a hundred and sixty thousand for a direct sum.
-struct SmallFft {
-    int size = 0;
-    std::vector<float> cosines;
-    std::vector<float> sines;
-
-    void prepare(int n);
-    // Transforms one real frame in place into `re`/`im`, using `work` as scratch. All three
-    // arrays are `size` long; `work` may be shared between calls on the same thread.
-    void run(float *re, float *im, float *work_re, float *work_im) const;
-};
 
 // A Whisper export as ncnn runs it: five graphs and a vocabulary, decoded greedily one token
 // at a time. The threading, the resampling and the delivery are the base's; what is here is
