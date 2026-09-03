@@ -1,5 +1,6 @@
 #include "register_types.h"
 
+#include "gigaam_asr.h"
 #include "ncnn_asr.h"
 #include "ncnn_runner.h"
 #include "whisper_asr.h"
@@ -41,6 +42,7 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     // and hold any family as one type; it has no instances of its own.
     GDREGISTER_ABSTRACT_CLASS(NcnnASR);
     GDREGISTER_CLASS(WhisperASR);
+    GDREGISTER_CLASS(GigaAMASR);
 }
 
 void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
