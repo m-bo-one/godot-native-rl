@@ -106,6 +106,40 @@ no scons flag is needed there). If you build ncnn with OpenMP **on** instead, dr
 dominates at runtime, and `run_inference_batch` parallelizes with its own threads (each
 worker pins ncnn to 1 thread regardless).
 
+### Windows, with OpenMP and Vulkan
+
+The self-contained flavour above is the one every release ships. A build that wants ncnn's
+own parallelism and its Vulkan compute backend is a different pair of CMake flags and a
+matching switch on the extension:
+
+```bat
+git -C thirdparty/ncnn submodule update --init --depth 1 glslang
+
+cmake -S thirdparty/ncnn -B thirdparty/ncnn/build-windows-x86_64 -G "Visual Studio 17 2022" -A x64 ^
+  -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF ^
+  -DNCNN_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF ^
+  -DNCNN_OPENMP=ON -DNCNN_VULKAN=ON ^
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+cmake --build thirdparty/ncnn/build-windows-x86_64 --config Release
+cmake --install thirdparty/ncnn/build-windows-x86_64 --config Release ^
+  --prefix thirdparty/ncnn/build-windows-x86_64/install
+
+scons platform=windows target=template_release ncnn_openmp=yes
+```
+
+`build-windows-x86_64/install` is the first place `SConstruct` looks, so nothing has to be
+pointed anywhere. Two things this flavour costs, and neither is optional:
+
+- `ncnn_openmp=yes` adds `/openmp`, which MSVC turns into a **`vcomp140.dll`** import. That
+  DLL is part of the Visual C++ runtime and has to travel beside the extension. Without the
+  switch the link fails on `_vcomp` symbols; with it against an `NCNN_OPENMP=OFF` lib you get
+  the dependency for nothing, which is why the Windows default is `no`.
+- `NCNN_VULKAN=ON` links `vulkan-1.dll` as a **hard import**. Godot's own executable does not
+  import it -- it loads the loader at runtime and falls back when there is none -- so an
+  extension built this way refuses to load on a machine where Godot itself would still run.
+- `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` matches godot-cpp's default `/MT`. A `/MD` ncnn
+  fails to link with `LNK2038` on every AVX512 object.
+
 `SConstruct` looks for static ncnn here:
 
 - macOS/Linux: `thirdparty/ncnn/build/install/lib/libncnn.a` (fallback: `thirdparty/ncnn/build/src/libncnn.a`)

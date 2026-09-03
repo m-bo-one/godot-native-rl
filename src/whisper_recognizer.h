@@ -26,7 +26,8 @@ struct WhisperGraph {
     PackedByteArray param;
     PackedByteArray weights;
 
-    bool load(const String &param_path, const String &bin_path, int num_threads);
+    bool load(const String &param_path, const String &bin_path, int num_threads,
+            bool use_gpu, bool gpu_fp16);
     void clear();
 };
 
@@ -71,6 +72,10 @@ class WhisperRecognizer : public RefCounted {
     SmallFft fft;
     int threads = 1;
 
+    // Whether the graphs run on a graphics device. Held because last_timings() reports it and
+    // because a reload has to put the model back on the same side it was asked for.
+    bool on_gpu = false;
+
     // How many attention caches travel between decode steps, read off the decoder's own
     // structure. It is a property of the size that was exported -- tiny has eight pairs and
     // base twelve -- so a number fixed here would decode one size and nothing else.
@@ -113,7 +118,13 @@ public:
     WhisperRecognizer() = default;
     ~WhisperRecognizer();
 
-    bool load(const String &model_dir, const String &language, int num_threads);
+    // How many graphics devices ncnn can see. Static because a host has to ask before it
+    // builds anything: on a library compiled without Vulkan, or a machine with no driver,
+    // the answer is zero and the caller keeps to the processor rather than failing to load.
+    static int gpu_count();
+
+    bool load(const String &model_dir, const String &language, int num_threads,
+            bool use_gpu = false, bool gpu_fp16 = false);
     String transcribe(const PackedFloat32Array &samples, int sample_rate);
     bool transcribe_async(const PackedFloat32Array &samples, int sample_rate);
     bool is_busy() const;

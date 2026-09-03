@@ -7,6 +7,10 @@
 #include <godot_cpp/variant/callable_method_pointer.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 
+#if NCNN_VULKAN
+#include <gpu.h>
+#endif
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -265,10 +269,22 @@ void SmallFft::run(float *re, float *im, float *work_re, float *work_im) const {
             cosines.data(), sines.data(), work_re, work_im);
 }
 
-bool WhisperGraph::load(const String &param_path, const String &bin_path, int num_threads) {
+bool WhisperGraph::load(const String &param_path, const String &bin_path, int num_threads,
+        bool use_gpu, bool gpu_fp16) {
     clear();
     net.opt.num_threads = num_threads;
-    net.opt.use_vulkan_compute = false;
+    // Set before the structure is read, not after: ncnn decides at load time which pipeline
+    // each layer gets, so flipping this afterwards leaves the graph on the side it was built for.
+    net.opt.use_vulkan_compute = use_gpu;
+    if (use_gpu && !gpu_fp16) {
+        // Half precision is what a device is quickest at and it is not free here: measured on
+        // this encoder it changes the words on a Russian clip at tiny, and at base it overflows
+        // outright -- the graph then writes the same token until the loop gives up. Off, the
+        // answer matches the processor's exactly and costs nothing measurable.
+        net.opt.use_fp16_packed = false;
+        net.opt.use_fp16_storage = false;
+        net.opt.use_fp16_arithmetic = false;
+    }
 
     param = FileAccess::get_file_as_bytes(param_path);
     weights = FileAccess::get_file_as_bytes(bin_path);
@@ -292,6 +308,23 @@ void WhisperGraph::clear() {
     weights = PackedByteArray();
 }
 
+// The devices ncnn can see, and zero on a library built without Vulkan at all. Creating the
+// instance is what fills the count in, and it is never destroyed: another net in this same
+// library may still hold devices of its own, and tearing the instance down under one crashes.
+int WhisperRecognizer::gpu_count() {
+#if NCNN_VULKAN
+    static const int found = []() {
+        if (ncnn::create_gpu_instance() != 0) {
+            return 0;
+        }
+        return ncnn::get_gpu_count();
+    }();
+    return found;
+#else
+    return 0;
+#endif
+}
+
 WhisperRecognizer::~WhisperRecognizer() {
     unload();
 }
@@ -299,10 +332,14 @@ WhisperRecognizer::~WhisperRecognizer() {
 // The folder is read through the engine rather than opened by a library, so a model inside an
 // exported pack loads exactly as a folder beside the game does. A load while a turn is in
 // flight would swap the graphs under the worker, so the worker is joined first.
-bool WhisperRecognizer::load(const String &model_dir, const String &language, int num_threads) {
+bool WhisperRecognizer::load(const String &model_dir, const String &language, int num_threads,
+        bool use_gpu, bool gpu_fp16) {
     unload();
     const double started = now_ms();
     threads = num_threads > 0 ? num_threads : 1;
+    // A device is asked for, not assumed: a library built without Vulkan or a machine with no
+    // driver answers zero here, and the graphs are then built for the processor instead.
+    on_gpu = use_gpu && gpu_count() > 0;
 
     Ref<DirAccess> dir = DirAccess::open(model_dir);
     if (dir.is_null()) {
@@ -316,16 +353,20 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
         return false;
     }
 
+    // Only the encoder goes to the device. It is one pass over the whole clip and the kind of
+    // work a card is built for; the decode loop is a hundred tiny steps that would each have to
+    // send the attention caches across and read them back, which costs more than it saves.
     struct Part {
         WhisperGraph *graph;
         const char *mark;
+        bool device;
     };
     const Part parts[] = {
-        {&encoder, "encoder"},
-        {&decoder, "decoder"},
-        {&embed_token, "embed_token"},
-        {&embed_position, "embed_position"},
-        {&proj_out, "proj_out"},
+        {&encoder, "encoder", true},
+        {&decoder, "decoder", false},
+        {&embed_token, "embed_token", false},
+        {&embed_position, "embed_position", false},
+        {&proj_out, "proj_out", false},
     };
     for (const Part &part : parts) {
         const String param_name = pick(files, part.mark, ".ncnn.param");
@@ -335,7 +376,8 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
         }
         const String bin_name = param_name.trim_suffix(".param") + ".bin";
         if (!part.graph->load(model_dir.path_join(param_name),
-                    model_dir.path_join(bin_name), threads)) {
+                    model_dir.path_join(bin_name), threads,
+                    on_gpu && part.device, gpu_fp16)) {
             unload();
             return false;
         }
@@ -452,6 +494,7 @@ void WhisperRecognizer::unload() {
     join_worker();
     busy.store(false);
     loaded = false;
+    on_gpu = false;
     encoder.clear();
     decoder.clear();
     embed_token.clear();
@@ -473,6 +516,7 @@ Dictionary WhisperRecognizer::last_timings() const {
     out["decoder_ms"] = decoder_ms;
     out["total_ms"] = total_ms;
     out["tokens"] = token_count;
+    out["on_gpu"] = on_gpu;
     return out;
 }
 
@@ -768,8 +812,11 @@ void WhisperRecognizer::join_worker() {
 }
 
 void WhisperRecognizer::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("load", "model_dir", "language", "num_threads"),
-            &WhisperRecognizer::load);
+    ClassDB::bind_method(D_METHOD("load", "model_dir", "language", "num_threads", "use_gpu",
+                                 "gpu_fp16"),
+            &WhisperRecognizer::load, DEFVAL(false), DEFVAL(false));
+    ClassDB::bind_static_method("WhisperRecognizer", D_METHOD("gpu_count"),
+            &WhisperRecognizer::gpu_count);
     ClassDB::bind_method(D_METHOD("transcribe", "samples", "sample_rate"),
             &WhisperRecognizer::transcribe);
     ClassDB::bind_method(D_METHOD("transcribe_async", "samples", "sample_rate"),

@@ -101,6 +101,27 @@ if env["platform"] == "macos":
 # Link ncnn statically into the extension.
 env.Append(LIBS=[File(ncnn_static_lib)])
 
+# An ncnn built with NCNN_VULKAN=ON compiles its compute shaders through glslang at run time,
+# so libncnn carries unresolved GlslangToSpv/InitializeProcess references. The glslang static
+# libraries land beside ncnn's own in the same install tree; link whichever are there. A build
+# without Vulkan has none of them and this loop adds nothing.
+_ncnn_lib_dir = os.path.dirname(ncnn_static_lib)
+_lib_suffix = ".lib" if env["platform"] == "windows" else ".a"
+_lib_prefix = "" if env["platform"] == "windows" else "lib"
+for _glslang in (
+    "glslang",
+    "MachineIndependent",
+    "GenericCodeGen",
+    "OSDependent",
+    "OGLCompiler",
+    "SPIRV",
+    "SPVRemapper",
+    "glslang-default-resource-limits",
+):
+    _path = os.path.join(_ncnn_lib_dir, "{}{}{}".format(_lib_prefix, _glslang, _lib_suffix))
+    if os.path.isfile(_path):
+        env.Append(LIBS=[File(_path)])
+
 # An ncnn built with OpenMP makes libncnn.a reference the GNU OpenMP runtime (GOMP_parallel)
 # and pthreads. Those must be linked AFTER libncnn.a — so the linker's default --as-needed
 # keeps libgomp in DT_NEEDED — or the extension fails to load on Linux with
@@ -110,9 +131,18 @@ env.Append(LIBS=[File(ncnn_static_lib)])
 # with no libgomp runtime dependency. The default stays "yes" so a plain `scons platform=linux`
 # against a stock OpenMP ncnn still links correctly — set ncnn_openmp=no to match an
 # NCNN_OPENMP=OFF static lib.
-_ncnn_openmp = str(ARGUMENTS.get("ncnn_openmp", "yes")).lower() not in ("0", "no", "false")
+#
+# On Windows the same flag means the same thing and is spelled differently: MSVC picks its
+# OpenMP runtime from the /openmp switch, so an ncnn built with NCNN_OPENMP=ON needs it here
+# or the link fails on _vcomp symbols. The default is "no" there because every documented
+# Windows build uses an NCNN_OPENMP=OFF static lib, and passing /openmp for a library that
+# never calls OpenMP would add a vcomp140.dll dependency for nothing.
+_openmp_default = "no" if env["platform"] == "windows" else "yes"
+_ncnn_openmp = str(ARGUMENTS.get("ncnn_openmp", _openmp_default)).lower() not in ("0", "no", "false")
 if env["platform"] == "linux":
     env.Append(LIBS=(["gomp", "pthread"] if _ncnn_openmp else ["pthread"]))
+elif env["platform"] == "windows" and _ncnn_openmp:
+    env.Append(CCFLAGS=["/openmp"])
 
 # ncnn's Android backend pulls in the platform asset-manager (AAsset_*, in libandroid) and logging
 # (__android_log_print, in liblog). Link them so they land in the extension's own DT_NEEDED — must
