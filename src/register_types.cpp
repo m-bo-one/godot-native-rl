@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "ncnn_runner.h"
+#include "whisper_recognizer.h"
 
 #include <godot_cpp/godot.hpp>
 
@@ -12,6 +13,7 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     }
 
     ClassDB::register_class<NcnnRunner>();
+    ClassDB::register_class<WhisperRecognizer>();
 }
 
 void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
