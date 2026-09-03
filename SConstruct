@@ -4,6 +4,12 @@ import subprocess
 
 from SCons.Script import ARGUMENTS, Default, Exit, File, Glob, SConscript
 
+# The speech recognisers fence a decode in a try and answer a worker thread that could not be
+# started with false; godot-cpp's own default, disable_exceptions=yes, compiles both fences
+# away and lets either fault unwind into the engine. The default is turned here, before the
+# bindings read it, and src/ncnn_asr.cpp refuses to compile without exceptions either way.
+ARGUMENTS.setdefault("disable_exceptions", "no")
+
 # Pulls in godot-cpp's build env. By default this also compiles the bindings library; pass
 # `build_library=no` to link an already-built godot-cpp/bin/libgodot-cpp.*.a instead (CI does
 # this to avoid recompiling the bindings on every extension build — see ci.yml / issue #85).

@@ -8,6 +8,13 @@
 
 #include <cstring>
 
+// The two fences below are a try around a decode and a catch around a thread that could not
+// start; compiled without exceptions they are dead code and either fault unwinds into the
+// engine. Refused here rather than discovered on a machine that could not start the thread.
+#if !defined(_CPPUNWIND) && !defined(__EXCEPTIONS) && !defined(__cpp_exceptions)
+#error "ncnn_asr.cpp needs C++ exceptions: build with disable_exceptions=no"
+#endif
+
 using namespace godot;
 
 namespace {

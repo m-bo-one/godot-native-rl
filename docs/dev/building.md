@@ -137,7 +137,10 @@ pointed anywhere. Three things this costs, and none is optional:
 - `disable_exceptions=no` is godot-cpp's own switch and puts `/EHsc` on every object,
   bindings included, so the two halves agree. The speech recognisers need it: a decode is
   fenced in a `try`, and a worker thread that cannot be started is answered with `false`
-  rather than unwound into the engine. With exceptions off both fences are dead code.
+  rather than unwound into the engine. With exceptions off both fences are dead code, which
+  is why this `SConstruct` turns the default to `no` before the bindings read it, and why
+  `src/ncnn_asr.cpp` refuses to compile at all when `disable_exceptions=yes` is passed over
+  it. Spelling the switch out on the command line is harmless and no longer required.
 
 `SConstruct` looks for static ncnn here:
 
