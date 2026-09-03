@@ -84,7 +84,8 @@ NcnnASR::~NcnnASR() {
 
 // The folder is opened through the engine rather than by a library, so a model inside an
 // exported pack loads exactly as a folder beside the game does. A load while a turn is in
-// flight would swap the graphs under the worker, so the worker is joined first.
+// flight would swap the graphs under the worker, so the worker is joined first, and the graphs
+// are read under the same lock a decode on any thread holds.
 bool NcnnASR::load(const String &model_dir, const String &language, int num_threads) {
     unload();
     const double started = now_ms();
@@ -94,19 +95,20 @@ bool NcnnASR::load(const String &model_dir, const String &language, int num_thre
     if (dir.is_null()) {
         return false;
     }
+    std::lock_guard<std::mutex> hold(graphs_lock);
     if (!_load_graphs(model_dir, language, threads)) {
         _unload_graphs();
         return false;
     }
 
-    loaded = true;
+    loaded.store(true);
     load_ms = now_ms() - started;
     return true;
 }
 
 String NcnnASR::transcribe(const PackedFloat32Array &samples, int sample_rate) {
     BusyGuard guard(busy);
-    if (!guard.taken() || !loaded || samples.is_empty()) {
+    if (!guard.taken() || !loaded.load() || samples.is_empty()) {
         return String();
     }
     return run(samples, sample_rate);
@@ -114,15 +116,19 @@ String NcnnASR::transcribe(const PackedFloat32Array &samples, int sample_rate) {
 
 bool NcnnASR::transcribe_async(const PackedFloat32Array &samples, int sample_rate) {
     BusyGuard guard(busy);
-    if (!guard.taken() || !loaded || samples.is_empty()) {
+    if (!guard.taken() || !loaded.load() || samples.is_empty()) {
         return false;
     }
     join_worker();
+    // Marked owed before the thread exists: a delivery that raced this line would otherwise
+    // lower the flag first and have the mark set over it afterwards.
+    owed.store(true);
     // A thread that could not be started answers false with the flag given back, rather than
     // letting the system error unwind into the engine, which has no handler for one.
     try {
         worker = std::thread(&NcnnASR::work, this, samples, sample_rate, epoch.load());
     } catch (...) {
+        owed.store(false);
         return false;
     }
     guard.hand_on();
@@ -134,15 +140,23 @@ bool NcnnASR::is_busy() const {
 }
 
 bool NcnnASR::is_loaded() const {
-    return loaded;
+    return loaded.load();
 }
 
+// The worker is joined and then the lock is taken, in that order: the worker's decode holds
+// the lock, so taking it first would wait on a thread that is waiting to be joined. The
+// blocking caller's flag is left to its own guard; only the worker's is lowered here.
 void NcnnASR::unload() {
     epoch.fetch_add(1);
     join_worker();
-    busy.store(false);
-    loaded = false;
-    _unload_graphs();
+    {
+        std::lock_guard<std::mutex> hold(graphs_lock);
+        loaded.store(false);
+        _unload_graphs();
+    }
+    if (owed.exchange(false)) {
+        busy.store(false);
+    }
 }
 
 // What the last clip cost, so a project can measure this road rather than trust a number
@@ -176,10 +190,17 @@ Array NcnnASR::last_language_candidates() const {
     return Array();
 }
 
-// One clip through the family's graphs, at the rate they take. The decode is fenced: an
-// exception out of it would unwind into the engine, which has no handler and dies, where an
-// empty answer is a clip the host is told held nothing.
+// One clip through the family's graphs, at the rate they take, under the lock that keeps the
+// graphs in place until it returns. The decode is fenced: an exception out of it would unwind
+// into the engine, which has no handler and dies, where an empty answer is a clip the host is
+// told held nothing.
 String NcnnASR::run(const PackedFloat32Array &samples, int sample_rate) {
+    std::lock_guard<std::mutex> hold(graphs_lock);
+    // Read again with the lock held: an unload() between the busy flag and this line has
+    // already freed the graphs, and the answer to that is nothing rather than a decode.
+    if (!loaded.load()) {
+        return String();
+    }
     const double started = now_ms();
 
     const float *source = samples.ptr();
@@ -223,6 +244,7 @@ void NcnnASR::deliver(int64_t at) {
     if (at != epoch.load() || !busy.load()) {
         return;
     }
+    owed.store(false);
     busy.store(false);
     emit_signal("transcribed", pending_text);
 }

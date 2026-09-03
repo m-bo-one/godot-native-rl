@@ -2,6 +2,8 @@
 
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/core/error_macros.hpp>
+#include <godot_cpp/variant/variant.hpp>
 
 #include <cmath>
 #include <cstdio>
@@ -48,6 +50,13 @@ const char *LANGUAGES[] = {
     "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su"
 };
 constexpr int LANGUAGE_COUNT = 99;
+
+// The vocabulary that table is laid out for: the multilingual one of tiny, base, small and
+// medium, 50 257 text tokens with 1 608 specials over them. A large-v3 export carries one
+// language more and every token after it moves, so it is refused rather than read as words
+// in the language next door; an English-only export has a shorter table and is refused too.
+constexpr int MULTILINGUAL_VOCAB = 50257;
+constexpr int SPECIAL_TOKENS = 1608;
 
 // Where the special tokens sit above the vocabulary, counted from its own size rather than
 // written down: end of text is the first one after it, then start, the languages, translate,
@@ -318,6 +327,17 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
     if (language_index < 0 || vocab.empty()) {
         return false;
     }
+    // Measured off the projection rather than trusted: its output width is the whole token
+    // table, specials included, and the one number that tells a large-v3 export apart.
+    const int width = output_width();
+    if ((int)vocab.size() != MULTILINGUAL_VOCAB || width != MULTILINGUAL_VOCAB + SPECIAL_TOKENS) {
+        ERR_PRINT(vformat("Whisper export refused: %d vocabulary lines and a projection %d wide, "
+                          "where the multilingual layout of tiny, base, small and medium is %d "
+                          "and %d. Those four sizes are the only exports read here.",
+                (int)vocab.size(), width, MULTILINGUAL_VOCAB,
+                MULTILINGUAL_VOCAB + SPECIAL_TOKENS));
+        return false;
+    }
 
     // The special tokens sit directly above the vocabulary, in the order Whisper numbers them.
     const int size = (int)vocab.size();
@@ -336,6 +356,34 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
 
 String WhisperASR::describe_family() const {
     return "Whisper (ncnn)";
+}
+
+// How wide the output projection answers, found by running it once on a zero vector of the
+// width the token embedding answers. Both extracts failing is -1: two graphs that do not fit
+// each other are halves of two exports, and a load that said no beats a decode that breaks.
+int WhisperASR::output_width() {
+    ncnn::Mat of_token;
+    {
+        ncnn::Mat token_in = owned_index(0);
+        ncnn::Extractor ex = embed_token.net.create_extractor();
+        ex.input("in0", token_in);
+        if (ex.extract("out0", of_token) != 0 || of_token.empty()) {
+            return -1;
+        }
+    }
+    ncnn::Mat hidden;
+    hidden.create(of_token.w, 1);
+    if (hidden.empty()) {
+        return -1;
+    }
+    hidden.fill(0.0f);
+    ncnn::Mat logits;
+    ncnn::Extractor ex = proj_out.net.create_extractor();
+    ex.input("in0", hidden);
+    if (ex.extract("out0", logits) != 0 || logits.empty()) {
+        return -1;
+    }
+    return logits.w;
 }
 
 double WhisperASR::last_no_speech_prob() const {
@@ -543,7 +591,12 @@ String WhisperASR::_decode(const std::vector<float> &samples) {
 // it, then whatever the graph writes is fed back until it says it is finished. The caches
 // stay ncnn's own objects and are handed straight back, and the mask grows one column per
 // step -- a mask of the wrong width has the attention reading past the end of its row.
+//
+// An extract that fails ends the clip with no words at all rather than the words so far: a
+// step run on a cache that was never written is a decode continuing from nothing, and half a
+// sentence read as the whole of it is a worse answer than the seam's "nothing heard".
 std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
+    const std::vector<int> nothing;
     std::vector<int> written;
     // Left unset on the first step. An Input layer is not re-run to produce a blob, and the
     // attention reads an empty cache as no history, which is exactly what step one has.
@@ -560,18 +613,18 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
             ncnn::Extractor ex = embed_token.net.create_extractor();
             ex.input("in0", token_in);
             if (ex.extract("out0", of_token) != 0) {
-                break;
+                return nothing;
             }
             ncnn::Mat position_in = owned_index(position);
             ncnn::Extractor ex2 = embed_position.net.create_extractor();
             ex2.input("in0", position_in);
             if (ex2.extract("out0", of_position) != 0 || of_position.w != of_token.w) {
-                break;
+                return nothing;
             }
             // The width the export was written at, taken from the lookup that just answered.
             embedding.create(of_token.w, 1);
             if (embedding.empty()) {
-                break;
+                return nothing;
             }
             // The exporter took the position add out of the decoder graph, so the two
             // embeddings are summed here; without it every token is read at position zero.
@@ -587,7 +640,7 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
         // ever looks backwards, so there is nothing ahead of it that would have to be hidden.
         ncnn::Mat mask = owned(mask_row.data(), position + 1, 1);
         if (mask.empty()) {
-            break;
+            return nothing;
         }
 
         ncnn::Mat hidden;
@@ -608,13 +661,17 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
                 ex.input(name, cache[(size_t)i * 2 + 1]);
             }
             if (ex.extract("out0", hidden) != 0) {
-                break;
+                return nothing;
             }
             for (int i = 0; i < cache_pairs; i++) {
                 snprintf(name, sizeof(name), "out_cache_k%d", i);
-                ex.extract(name, next[(size_t)i * 2]);
+                if (ex.extract(name, next[(size_t)i * 2]) != 0) {
+                    return nothing;
+                }
                 snprintf(name, sizeof(name), "out_cache_v%d", i);
-                ex.extract(name, next[(size_t)i * 2 + 1]);
+                if (ex.extract(name, next[(size_t)i * 2 + 1]) != 0) {
+                    return nothing;
+                }
             }
         }
         cache.swap(next);
@@ -636,7 +693,7 @@ std::vector<int> WhisperASR::run_decoder(const ncnn::Mat &states) {
             ncnn::Extractor ex = proj_out.net.create_extractor();
             ex.input("in0", hidden);
             if (ex.extract("out0", logits) != 0) {
-                break;
+                return nothing;
             }
         }
         const float *scores = logits.row(0);

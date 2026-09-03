@@ -111,6 +111,7 @@ public:
     bool is_detecting_language() const;
 
 private:
+    int output_width();
     void log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const;
     std::vector<int> run_decoder(const ncnn::Mat &states);
     void read_first_step(const ncnn::Mat &hidden);

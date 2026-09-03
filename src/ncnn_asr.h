@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -39,6 +40,10 @@ struct NcnnGraph {
 // The graphs are used from one thread at a time. transcribe() decodes on the caller's thread,
 // transcribe_async() hands the same work to one worker and delivers the text on the main
 // thread; each refuses while the other holds them, or the extractors run re-entrant.
+//
+// The graphs are freed under a lock every decode holds: unload(), load() and the destructor
+// wait for a decode already running on any thread, the way the worker is joined, so a call
+// from a second thread meets a finished decode rather than graphs freed under one.
 class NcnnASR : public RefCounted {
     GDCLASS(NcnnASR, RefCounted)
 
@@ -49,11 +54,21 @@ class NcnnASR : public RefCounted {
     std::atomic<bool> busy{false};
     String pending_text;
 
+    // Whether the worker owns the flag. unload() lowers it only then: a delivery whose epoch
+    // has gone never will, while a blocking caller's flag is its own to lower and is left alone.
+    std::atomic<bool> owed{false};
+
+    // Held by every decode and by whatever frees or replaces the graphs. The busy flag says
+    // the graphs are taken; this is what makes unload() wait for the thread that took them.
+    std::mutex graphs_lock;
+
     // Which model the worker was started against. unload() and load() move it on, so a
     // result delivered after either is dropped rather than reported for a model that went.
     std::atomic<int64_t> epoch{0};
 
-    bool loaded = false;
+    // Written under the lock and read on a caller's thread ahead of it, so it is atomic; a
+    // decode reads it again once it holds the lock, which is the read that decides.
+    std::atomic<bool> loaded{false};
     double load_ms = 0.0;
     double total_ms = 0.0;
 
