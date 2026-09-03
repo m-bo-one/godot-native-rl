@@ -110,9 +110,18 @@ env.Append(LIBS=[File(ncnn_static_lib)])
 # with no libgomp runtime dependency. The default stays "yes" so a plain `scons platform=linux`
 # against a stock OpenMP ncnn still links correctly — set ncnn_openmp=no to match an
 # NCNN_OPENMP=OFF static lib.
-_ncnn_openmp = str(ARGUMENTS.get("ncnn_openmp", "yes")).lower() not in ("0", "no", "false")
+#
+# On Windows the same flag means the same thing and is spelled differently: MSVC picks its
+# OpenMP runtime from the /openmp switch, so an ncnn built with NCNN_OPENMP=ON needs it here
+# or the link fails on _vcomp symbols. The default is "no" there because the self-contained
+# flavour is an NCNN_OPENMP=OFF static lib, and passing /openmp for a library that never calls
+# OpenMP would add a vcomp140.dll dependency for nothing.
+_openmp_default = "no" if env["platform"] == "windows" else "yes"
+_ncnn_openmp = str(ARGUMENTS.get("ncnn_openmp", _openmp_default)).lower() not in ("0", "no", "false")
 if env["platform"] == "linux":
     env.Append(LIBS=(["gomp", "pthread"] if _ncnn_openmp else ["pthread"]))
+elif env["platform"] == "windows" and _ncnn_openmp:
+    env.Append(CCFLAGS=["/openmp"])
 
 # ncnn's Android backend pulls in the platform asset-manager (AAsset_*, in libandroid) and logging
 # (__android_log_print, in liblog). Link them so they land in the extension's own DT_NEEDED — must

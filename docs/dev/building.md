@@ -106,6 +106,39 @@ no scons flag is needed there). If you build ncnn with OpenMP **on** instead, dr
 dominates at runtime, and `run_inference_batch` parallelizes with its own threads (each
 worker pins ncnn to 1 thread regardless).
 
+### Windows, with ncnn's own parallelism
+
+The self-contained flavour above leaves ncnn single-threaded: `NCNN_OPENMP=OFF` means the
+thread count an extension asks for never reaches the graphs. A build that wants it is one
+CMake flag and one matching SCons switch:
+
+```bat
+cmake -S thirdparty/ncnn -B thirdparty/ncnn/build-windows-x86_64 -G "Visual Studio 17 2022" -A x64 ^
+  -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF ^
+  -DNCNN_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF ^
+  -DNCNN_OPENMP=ON -DNCNN_VULKAN=OFF ^
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+cmake --build thirdparty/ncnn/build-windows-x86_64 --config Release
+cmake --install thirdparty/ncnn/build-windows-x86_64 --config Release ^
+  --prefix thirdparty/ncnn/build-windows-x86_64/install
+
+scons platform=windows target=template_release ncnn_openmp=yes disable_exceptions=no
+```
+
+`build-windows-x86_64/install` is the first place `SConstruct` looks, so nothing has to be
+pointed anywhere. Three things this costs, and none is optional:
+
+- `ncnn_openmp=yes` adds `/openmp`, which MSVC turns into a **`vcomp140.dll`** import. That
+  DLL is part of the Visual C++ runtime and has to travel beside the extension. Without the
+  switch the link fails on `_vcomp` symbols; with it against an `NCNN_OPENMP=OFF` lib you get
+  the dependency for nothing, which is why the Windows default is `no`.
+- `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` matches godot-cpp's default `/MT`. A `/MD` ncnn
+  fails to link with `LNK2038` on every AVX512 object.
+- `disable_exceptions=no` is godot-cpp's own switch and puts `/EHsc` on every object,
+  bindings included, so the two halves agree. The speech recognisers need it: a decode is
+  fenced in a `try`, and a worker thread that cannot be started is answered with `false`
+  rather than unwound into the engine. With exceptions off both fences are dead code.
+
 `SConstruct` looks for static ncnn here:
 
 - macOS/Linux: `thirdparty/ncnn/build/install/lib/libncnn.a` (fallback: `thirdparty/ncnn/build/src/libncnn.a`)
