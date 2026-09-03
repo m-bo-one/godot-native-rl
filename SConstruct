@@ -18,10 +18,17 @@ sources = Glob("src/*.cpp")
 env.Append(CPPPATH=["src"])
 requested_arch = str(ARGUMENTS.get("arch", env.get("arch", "")))
 
+# The ncnn revision this project is built and measured against. It is not master: measured,
+# a 2026-09-02 master faults with an integer divide by zero part-way through a Whisper decode
+# that the same sources decode correctly on this tag. docs/dev/building.md says how that was
+# established; the string a built library reports is the build DATE and not this.
+NCNN_PIN = "tag 20260526 (commit e54f7b1f88434e1d844ea0551b880a1cfb079ce1)"
+
 project_dir = os.path.abspath(".")
 ncnn_root = os.path.join(project_dir, "thirdparty", "ncnn")
 if not os.path.isdir(ncnn_root):
     print("Error: ncnn root was not found at {}".format(ncnn_root))
+    print("Clone it and check out {} -- see docs/dev/building.md.".format(NCNN_PIN))
     Exit(1)
 
 # Per-target cross/native build dir (e.g. build-linux-x86_64, build-windows-x86_64), so a
@@ -74,6 +81,7 @@ if ncnn_static_lib is None:
     print("Error: could not find static ncnn library. Looked in:")
     for path in ncnn_static_candidates:
         print("  - {}".format(path))
+    print("Build it from {} -- see docs/dev/building.md.".format(NCNN_PIN))
     Exit(1)
 
 if env["platform"] == "macos":

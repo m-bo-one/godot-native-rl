@@ -55,7 +55,28 @@ From repository root, clone dependencies into the expected paths:
 git clone -b 4.5 https://github.com/godotengine/godot-cpp.git
 mkdir -p thirdparty
 git clone https://github.com/Tencent/ncnn.git thirdparty/ncnn
+git -C thirdparty/ncnn checkout 20260526   # see "Which ncnn" below -- do not build master
 ```
+
+### Which ncnn, and why it is pinned
+
+**Build tag `20260526`** (commit `e54f7b1f88434e1d844ea0551b880a1cfb079ce1`). Not master.
+
+Master is not a moving target you can follow here. Measured: with `2026-09-02` master
+(`0a4e85ae`) and no change to this repository's own sources at all, the base Whisper export
+faults with an integer divide by zero -- exit `0xC0000094` -- part-way through a decode that
+the same sources decode correctly when built against `20260526`. The recogniser's own code
+was ruled out by building a known-good revision of it against both: it passes on the tag and
+faults on master, so the fault is upstream.
+
+Note that the version string a built library reports is **not** the source revision it was
+built from: ncnn's CMake defaults `NCNN_VERSION` to the build date, so a library reporting
+`1.0.20260903` was built on the third of September from whatever was checked out. The commit
+above is the one to compare against, not the string.
+
+Moving the pin means rebuilding and running the addon's suite with the real model folders
+present, because this class of fault appears only when a model actually runs -- see the entry
+on silent crashes at the end of this document.
 
 Directory layout:
 
