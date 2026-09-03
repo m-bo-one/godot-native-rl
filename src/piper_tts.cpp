@@ -11,6 +11,8 @@
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include "ncnn_report.h"
+
 #include <godot_cpp/variant/array.hpp>
 
 #include <layer.h>
@@ -375,6 +377,7 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
 
     TtsNoise noise(seed);
     symbol_count = ids.size();
+    doing("running the encoder");
 
     // enc_p: the symbols to their encodings and to the mean and spread the sampler draws from.
     ncnn::Mat x;
@@ -384,9 +387,8 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
     {
         ncnn::Mat sequence = owned_indices((const int *)ids.ptr(), ids.size());
         ncnn::Extractor ex = enc_p.net.create_extractor();
-        ex.input("in0", sequence);
-        if (ex.extract("out0", x) != 0 || ex.extract("out1", m_p) != 0
-                || ex.extract("out2", logs_p) != 0) {
+        if (ex.input("in0", sequence) != 0 || ex.extract("out0", x) != 0
+                || ex.extract("out1", m_p) != 0 || ex.extract("out2", logs_p) != 0) {
             problem = String("Govorilka: the encoder graph refused this sentence.");
             return PackedFloat32Array();
         }
@@ -396,10 +398,10 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
     // emb_g: the chosen voice as one embedding, handed to the three graphs below.
     ncnn::Mat g;
     if (has_speakers) {
+        doing("running the voice embedding");
         ncnn::Mat index = owned_index(speaker);
         ncnn::Extractor ex = emb_g.net.create_extractor();
-        ex.input("in0", index);
-        if (ex.extract("out0", g) != 0) {
+        if (ex.input("in0", index) != 0 || ex.extract("out0", g) != 0) {
             problem = String("Govorilka: the voice embedding graph refused voice {0}.")
                               .format(Array::make(speaker));
             return PackedFloat32Array();
@@ -410,6 +412,7 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
     // dp: how long each symbol is held, as a log duration. The noise it samples with is a
     // graph input rather than a layer, which is what makes the seed reach it.
     ncnn::Mat logw;
+    doing("running the duration predictor");
     at = now_ms();
     {
         ncnn::Mat draw(x.w, 2);
@@ -421,12 +424,11 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
             draw[i] = noise.normal() * noise_w;
         }
         ncnn::Extractor ex = dp.net.create_extractor();
-        ex.input("in0", x);
-        ex.input("in1", draw);
+        int refused = ex.input("in0", x) | ex.input("in1", draw);
         if (has_speakers) {
-            ex.input("in2", g);
+            refused |= ex.input("in2", g);
         }
-        if (ex.extract("out0", logw) != 0) {
+        if (refused != 0 || ex.extract("out0", logw) != 0) {
             problem = String("Govorilka: the duration graph refused this sentence.");
             return PackedFloat32Array();
         }
@@ -434,6 +436,7 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
     dp_ms = now_ms() - at;
 
     ncnn::Mat z_p;
+    doing("repeating the symbols by their durations");
     regulate_length(logw, m_p, logs_p, noise, z_p);
     if (z_p.empty()) {
         problem = String("Govorilka: the sentence came to no frames at all. A length_scale "
@@ -444,14 +447,15 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
     // flow: the sampled sequence back through the normalising flow, into what the decoder
     // was trained to read.
     ncnn::Mat z;
+    doing("running the flow");
     at = now_ms();
     {
         ncnn::Extractor ex = flow.net.create_extractor();
-        ex.input("in0", z_p);
+        int refused = ex.input("in0", z_p);
         if (has_speakers) {
-            ex.input("in1", g);
+            refused |= ex.input("in1", g);
         }
-        if (ex.extract("out0", z) != 0) {
+        if (refused != 0 || ex.extract("out0", z) != 0) {
             problem = String("Govorilka: the flow graph refused this sentence.");
             return PackedFloat32Array();
         }
@@ -460,14 +464,15 @@ PackedFloat32Array PiperTTS::_synthesise(const PackedInt32Array &ids, int speake
 
     // dec: the waveform.
     ncnn::Mat out;
+    doing("running the decoder");
     at = now_ms();
     {
         ncnn::Extractor ex = dec.net.create_extractor();
-        ex.input("in0", z);
+        int refused = ex.input("in0", z);
         if (has_speakers) {
-            ex.input("in1", g);
+            refused |= ex.input("in1", g);
         }
-        if (ex.extract("out0", out) != 0) {
+        if (refused != 0 || ex.extract("out0", out) != 0) {
             problem = String("Govorilka: the decoder graph refused this sentence.");
             return PackedFloat32Array();
         }

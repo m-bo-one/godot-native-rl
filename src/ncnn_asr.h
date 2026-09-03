@@ -62,6 +62,9 @@ class NcnnASR : public RefCounted {
     double load_ms = 0.0;
     double total_ms = 0.0;
 
+    // What the last decode refused to do, kept for a caller that has only an empty answer.
+    String problem;
+
 protected:
     static void _bind_methods();
 
@@ -83,6 +86,11 @@ protected:
     // A Mat ncnn owns, filled from somebody else's memory. Every input has to go through
     // this: a Mat wrapping a foreign pointer carries a null refcount, and the first in-place
     // layer to consume it dereferences that null and takes the process down.
+    // What this is in the middle of, in a few words, set by the family as it moves through
+    // its graphs. It is what a fault says it was doing, and what the handler installed at
+    // initialisation names when the process is already dying.
+    void doing(const String &what) const;
+
     static ncnn::Mat owned(const float *source, int w, int h);
 
     // The same for a single whole number, which is what an embedding graph indexes with. The
@@ -111,6 +119,11 @@ public:
     // What the last clip cost, per graph. The numbers belong to the clip whose text was just
     // delivered: read after transcribed, or after the blocking call returns. Read during a
     // decode they are the clip before it, never a tear of the one running.
+    // Why the last clip came back with no words, where the reason was a fault rather than a
+    // quiet room. Empty for an ordinary decode. This family reports no failure by signal --
+    // its answer to a clip it could not read is no words -- so this is where a fault is kept.
+    String last_problem() const;
+
     Dictionary last_timings() const;
 
     // One phrase naming the family of model this reads, for a menu or a log line. A host
@@ -132,6 +145,7 @@ public:
     virtual Array last_language_candidates() const;
 
 private:
+    String _faulted(const String &thrown) const;
     String run(const PackedFloat32Array &samples, int sample_rate);
     void work(PackedFloat32Array samples, int sample_rate, int64_t at);
     void deliver(int64_t at);

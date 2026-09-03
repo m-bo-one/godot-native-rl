@@ -1,10 +1,14 @@
 #include "ncnn_asr.h"
 
+#include "ncnn_report.h"
+
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/callable_method_pointer.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <cstring>
 
@@ -202,10 +206,19 @@ String NcnnASR::run(const PackedFloat32Array &samples, int sample_rate) {
     }
 
     String text;
+    // A fault used to come back as an empty answer, which reads to a host exactly like a clip
+    // that held no words. It is kept as a sentence instead -- this family has no failure
+    // signal, so the sentence goes to last_problem() and to the log, where a silent empty
+    // answer left nothing at all.
     try {
+        problem = String();
         text = _decode(audio);
+    } catch (const std::exception &thrown) {
+        text = String();
+        problem = _faulted(ncnn_report::describe(thrown));
     } catch (...) {
         text = String();
+        problem = _faulted(ncnn_report::describe_unknown());
     }
     total_ms = now_ms() - started;
     return text;
@@ -214,8 +227,40 @@ String NcnnASR::run(const PackedFloat32Array &samples, int sample_rate) {
 // The worker's whole life: decode, then hand the text to the main thread. Emitting from
 // here instead would put a signal on a thread the engine's listeners are not written for.
 void NcnnASR::work(PackedFloat32Array samples, int sample_rate, int64_t at) {
-    pending_text = run(samples, sample_rate);
+    // Fenced around everything the worker does and not only the model: an exception that
+    // escapes a thread body is std::terminate, and the process then ends with no line
+    // anywhere. The delivery is posted whatever happens, so a host waiting on the signal is
+    // answered rather than left waiting for ever.
+    try {
+        pending_text = run(samples, sample_rate);
+    } catch (const std::exception &thrown) {
+        pending_text = String();
+        problem = _faulted(ncnn_report::describe(thrown));
+    } catch (...) {
+        pending_text = String();
+        problem = _faulted(ncnn_report::describe_unknown());
+    }
     callable_mp(this, &NcnnASR::deliver).call_deferred(at);
+}
+
+
+// One sentence about a fault, said once and kept. It names the class and what it was in the
+// middle of, because "it faulted" on its own sends the next person to a debugger.
+String NcnnASR::_faulted(const String &thrown) const {
+    const String said = String("Govorilka: {0} faulted while {1}: {2}").format(
+            Array::make(get_class(), ncnn_report::last_note(), thrown));
+    UtilityFunctions::push_error(said);
+    return said;
+}
+
+
+String NcnnASR::last_problem() const {
+    return problem;
+}
+
+
+void NcnnASR::doing(const String &what) const {
+    ncnn_report::note(get_class() + " " + what);
 }
 
 // The delivery, on the main thread. A turn whose model was unloaded or replaced while it
@@ -259,6 +304,7 @@ void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_busy"), &NcnnASR::is_busy);
     ClassDB::bind_method(D_METHOD("is_loaded"), &NcnnASR::is_loaded);
     ClassDB::bind_method(D_METHOD("unload"), &NcnnASR::unload);
+    ClassDB::bind_method(D_METHOD("last_problem"), &NcnnASR::last_problem);
     ClassDB::bind_method(D_METHOD("last_timings"), &NcnnASR::last_timings);
     ClassDB::bind_method(D_METHOD("describe_family"), &NcnnASR::describe_family);
     ClassDB::bind_method(D_METHOD("last_no_speech_prob"), &NcnnASR::last_no_speech_prob);

@@ -466,6 +466,7 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
 // trimmed to the window the encoder was exported for, which is the only length it has a shape
 // for; the text is the bytes of every token run together and read as UTF-8 once.
 String WhisperASR::_decode(const std::vector<float> &samples) {
+    doing("computing the log-mel front end");
     const double started = now_ms();
     no_speech_prob = 0.0;
     for (int i = 0; i < 3; i++) {

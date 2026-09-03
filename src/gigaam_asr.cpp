@@ -279,6 +279,7 @@ void GigaAMASR::log_mel(const float *audio, int frames, ncnn::Mat &mel) const {
 // are, cut at the longest clip the encoder takes; the letters are the argmax of every
 // position with repeats collapsed and the blank dropped, and the run is read as UTF-8 once.
 String GigaAMASR::_decode(const std::vector<float> &samples) {
+    doing("computing the log-mel front end");
     const double started = now_ms();
     frame_count = 0;
     token_count = 0;

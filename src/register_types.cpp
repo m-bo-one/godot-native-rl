@@ -2,6 +2,7 @@
 
 #include "gigaam_asr.h"
 #include "ncnn_asr.h"
+#include "ncnn_report.h"
 #include "ncnn_runner.h"
 #include "ncnn_tts.h"
 #include "piper_tts.h"
@@ -39,6 +40,11 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     }
 
     pin_openmp_runtime();
+    // Before any class of this extension exists, so that a fault in one of them has somewhere
+    // to be reported from. Without it a fault inside a worker thread ends the process with no
+    // line in the log and no line on the terminal, which is how the defect this was written
+    // for was found: by exit code, twice.
+    ncnn_report::install_handlers();
     GDREGISTER_CLASS(NcnnRunner);
     // The recogniser every family extends is registered so a script can ask for it by name
     // and hold any family as one type; it has no instances of its own.

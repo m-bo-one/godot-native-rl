@@ -548,3 +548,32 @@ convert; those two packages are only needed to verify.
 
 > A one-command convenience helper (`scripts/export_to_ncnn.py`) that wraps convert + verify with a
 > `--skip-verify` opt-out is planned. Until then, run `pnnx` and `verify_ncnn_parity.py` as above.
+
+## When it crashes and says nothing
+
+A fault inside one of this extension's worker threads used to end the process with no line
+anywhere: not in Godot's log file, not on the terminal, not in the editor. On Windows the
+exit code is `0xC0000409`, which is what `__fastfail` raises and is how the MSVC runtime ends
+`std::terminate`. Nothing unwinds, and because `__fastfail` is not a Windows exception, a
+structured exception filter never sees it either. Read through a shell pipe the exit code can
+even arrive as 0, so `$LASTEXITCODE` after a bare run is the thing to look at.
+
+Since then the library installs, at initialisation, a `std::set_terminate` handler that prints
+one line first -- the extension, the class, and what it was in the middle of -- through
+Godot's error printing and through stderr. A Windows unhandled-exception filter sits beside it
+for access violations, which are a different failure and do reach a filter. Every worker body
+and every model call is fenced, and what was thrown is reported as a sentence: the synthesiser
+sends it through its `failed` signal, and the recogniser, whose contract has no failure signal,
+keeps it in `last_problem()` and pushes it to the log.
+
+So a crash in here should now be a line before it is an exit code. If you get an exit code with
+no line, the handler itself did not run, and that is worth reporting as its own defect.
+
+The two classic ways to earn a `std::terminate` in this code base, both of which the bases
+avoid deliberately:
+
+- assigning a `std::thread` over one that is still `joinable()` -- a worker that has *finished*
+  is still joinable until it is joined, so every path that starts a worker joins the previous
+  one first;
+- letting an exception escape a thread body.
+
