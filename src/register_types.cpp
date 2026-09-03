@@ -3,6 +3,8 @@
 #include "gigaam_asr.h"
 #include "ncnn_asr.h"
 #include "ncnn_runner.h"
+#include "ncnn_tts.h"
+#include "piper_tts.h"
 #include "whisper_asr.h"
 
 #include <godot_cpp/godot.hpp>
@@ -43,6 +45,10 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     GDREGISTER_ABSTRACT_CLASS(NcnnASR);
     GDREGISTER_CLASS(WhisperASR);
     GDREGISTER_CLASS(GigaAMASR);
+    // The synthesiser every family extends, registered for the same reason as the recogniser:
+    // a script asks for it by name and holds any family as one type. No instances of its own.
+    GDREGISTER_ABSTRACT_CLASS(NcnnTTS);
+    GDREGISTER_CLASS(PiperTTS);
 }
 
 void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
