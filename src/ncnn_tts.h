@@ -111,6 +111,11 @@ protected:
     // the flag is lowered; a read during a run sees the previous sentence's numbers.
     virtual void _report_timings(Dictionary &out) const {}
 
+    // What this is in the middle of, in a few words, set by the family as it moves from one
+    // graph to the next. It is what a fault says it was doing, and what the handler installed
+    // at initialisation names when the process is already dying.
+    void doing(const String &what) const;
+
     static ncnn::Mat owned(const float *source, int w, int h);
     static ncnn::Mat owned_index(int value);
     static ncnn::Mat owned_indices(const int *source, int count);
@@ -162,6 +167,7 @@ public:
     virtual int speaker_count() const;
 
 private:
+    String _faulted(int symbols, const String &thrown) const;
     PackedFloat32Array run(const PackedInt32Array &ids, int speaker, String &said);
     void work(PackedInt32Array ids, int speaker, int64_t at);
     void deliver(int64_t at);

@@ -1,8 +1,11 @@
 #include "ncnn_tts.h"
 
+#include "ncnn_report.h"
+
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/callable_method_pointer.hpp>
 
 #include <cmath>
@@ -148,6 +151,11 @@ bool NcnnTTS::synthesise_async(const PackedInt32Array &ids, int speaker) {
 
     dropped.store(false);
     const int64_t at = epoch.load();
+    // The worker before this one has ended -- its delivery is what gave the flag back -- but a
+    // thread that has ended is still joinable, and assigning over a joinable thread is
+    // std::terminate(): the process dies with no message of any kind. Joined on every road in,
+    // and on the ordinary one it has already finished so this costs nothing.
+    join_worker();
     // Marked owed before the thread exists: a delivery that raced this line would otherwise
     // lower the flag first and have the mark set over it afterwards.
     owed_at.store(at);
@@ -252,11 +260,18 @@ PackedFloat32Array NcnnTTS::run(const PackedInt32Array &ids, int speaker, String
 
     said = String();
     PackedFloat32Array samples;
+    // What went wrong is said in words rather than swallowed: a fault here used to come back
+    // as an empty answer, which reads to a host exactly like a sentence with nothing in it.
+    // The class and what it was in the middle of are in the sentence, because "it faulted" on
+    // its own sends the next person to a debugger.
     try {
         samples = _synthesise(ids, speaker, said);
+    } catch (const std::exception &thrown) {
+        samples = PackedFloat32Array();
+        said = _faulted(ids.size(), ncnn_report::describe(thrown));
     } catch (...) {
         samples = PackedFloat32Array();
-        said = String("Govorilka: the synthesiser faulted on this sentence and made nothing.");
+        said = _faulted(ids.size(), ncnn_report::describe_unknown());
     }
     total_ms = now_ms() - started;
     return samples;
@@ -265,8 +280,28 @@ PackedFloat32Array NcnnTTS::run(const PackedInt32Array &ids, int speaker, String
 // The worker's whole life: run, then hand the samples to the main thread. Emitting from here
 // instead would put a signal on a thread the engine's listeners are not written for.
 void NcnnTTS::work(PackedInt32Array ids, int speaker, int64_t at) {
-    pending_samples = run(ids, speaker, pending_problem);
+    // Fenced again out here, around everything the worker does and not only the model: an
+    // exception that escapes a thread body is std::terminate, and the process then ends with
+    // no line anywhere. Whatever happens, the delivery is still posted, so a host waiting on
+    // a signal is answered rather than left waiting for ever.
+    try {
+        pending_samples = run(ids, speaker, pending_problem);
+    } catch (const std::exception &thrown) {
+        pending_samples = PackedFloat32Array();
+        pending_problem = _faulted(ids.size(), ncnn_report::describe(thrown));
+    } catch (...) {
+        pending_samples = PackedFloat32Array();
+        pending_problem = _faulted(ids.size(), ncnn_report::describe_unknown());
+    }
     callable_mp(this, &NcnnTTS::deliver).call_deferred(at);
+}
+
+
+// One sentence about a fault, with everything somebody would otherwise have to ask for: which
+// class, what it was in the middle of, how long the sentence was, and what was thrown.
+String NcnnTTS::_faulted(int symbols, const String &thrown) const {
+    return String("Govorilka: {0} faulted while {1} ({2} symbols): {3}").format(Array::make(
+            get_class(), ncnn_report::last_note(), symbols, thrown));
 }
 
 // The delivery, on the main thread. The flag is given back either way -- a sentence that was
@@ -295,6 +330,11 @@ void NcnnTTS::join_worker() {
         worker.join();
     }
 }
+
+void NcnnTTS::doing(const String &what) const {
+    ncnn_report::note(get_class() + " " + what);
+}
+
 
 ncnn::Mat NcnnTTS::owned(const float *source, int w, int h) {
     return ncnn_util::owned(source, w, h);
