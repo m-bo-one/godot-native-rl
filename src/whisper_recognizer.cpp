@@ -26,10 +26,12 @@ constexpr int FFT_SIZE = 400;
 constexpr int HOP = 160;
 constexpr int SPECTRUM_BINS = FFT_SIZE / 2 + 1;
 
-// The width of one decoder state and how many attention caches travel between steps: eight
-// pairs, self-attention and cross-attention alternating in the order the graph declares them.
-constexpr int STATE_WIDTH = 384;
-constexpr int CACHE_PAIRS = 8;
+// What the caches are called in every export, and the most a graph may declare. Neither the
+// state width nor the number of caches is written down here: they are properties of the size
+// that was exported -- tiny is 384 wide with 8 caches, base 512 with 12 -- and a constant for
+// either decodes one size and answers nothing at all for every other.
+const char *CACHE_MARK = "out_cache_k";
+constexpr int MOST_CACHE_PAIRS = 64;
 
 // The longest a turn may run. Whisper's own window is 448 positions and half of it is the
 // prompt it never gets here; past this a greedy loop is repeating itself rather than hearing.
@@ -177,6 +179,22 @@ double now_ms() {
     return (double)Time::get_singleton()->get_ticks_usec() / 1000.0;
 }
 
+// How many attention caches the decoder declares, counted off its own structure: one pair per
+// MultiHeadAttention, and a decoder layer has two of those. Reading it rather than assuming it
+// is what lets one loop run every size of an export instead of the one it was written against.
+int count_cache_pairs(const PackedByteArray &param) {
+    const char *text = (const char *)param.ptr();
+    const int length = param.size();
+    const int mark = (int)strlen(CACHE_MARK);
+    int found = 0;
+    for (int i = 0; i + mark < length; i++) {
+        if (memcmp(text + i, CACHE_MARK, (size_t)mark) == 0) {
+            found++;
+        }
+    }
+    return found;
+}
+
 int smallest_factor(int n) {
     for (int p = 2; p * p <= n; p++) {
         if (n % p == 0) {
@@ -321,6 +339,12 @@ bool WhisperRecognizer::load(const String &model_dir, const String &language, in
             unload();
             return false;
         }
+    }
+
+    cache_pairs = count_cache_pairs(decoder.param);
+    if (cache_pairs <= 0 || cache_pairs > MOST_CACHE_PAIRS) {
+        unload();
+        return false;
     }
 
     // The fbank graph's weights are its mel filterbank and nothing else -- one MemoryData
@@ -577,7 +601,9 @@ String WhisperRecognizer::decode(const PackedFloat32Array &samples, int sample_r
     {
         ncnn::Extractor ex = encoder.net.create_extractor();
         ex.input("in0", mel);
-        if (ex.extract("out0", states) != 0 || states.w != STATE_WIDTH) {
+        // Whatever width this size was exported at. Measuring it against a number written
+        // here is what made every size but one answer with no words at all.
+        if (ex.extract("out0", states) != 0 || states.empty()) {
             return String();
         }
     }
@@ -613,16 +639,12 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
     std::vector<int> written;
     // Left unset on the first step. An Input layer is not re-run to produce a blob, and the
     // attention reads an empty cache as no history, which is exactly what step one has.
-    std::vector<ncnn::Mat> cache((size_t)CACHE_PAIRS * 2);
+    std::vector<ncnn::Mat> cache((size_t)cache_pairs * 2);
     std::vector<float> mask_row((size_t)MOST_TOKENS + 1, 0.0f);
 
     int token = prompt[0];
     for (int position = 0; position < MOST_TOKENS; position++) {
         ncnn::Mat embedding;
-        embedding.create(STATE_WIDTH, 1);
-        if (embedding.empty()) {
-            break;
-        }
         {
             ncnn::Mat of_token;
             ncnn::Mat of_position;
@@ -635,7 +657,12 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
             ncnn::Mat position_in = owned_index(position);
             ncnn::Extractor ex2 = embed_position.net.create_extractor();
             ex2.input("in0", position_in);
-            if (ex2.extract("out0", of_position) != 0) {
+            if (ex2.extract("out0", of_position) != 0 || of_position.w != of_token.w) {
+                break;
+            }
+            // The width the export was written at, taken from the lookup that just answered.
+            embedding.create(of_token.w, 1);
+            if (embedding.empty()) {
                 break;
             }
             // The exporter took the position add out of the decoder graph, so the two
@@ -643,7 +670,7 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
             const float *a = of_token.row(0);
             const float *b = of_position.row(0);
             float *out = embedding.row(0);
-            for (int i = 0; i < STATE_WIDTH; i++) {
+            for (int i = 0; i < of_token.w; i++) {
                 out[i] = a[i] + b[i];
             }
         }
@@ -656,14 +683,14 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
         }
 
         ncnn::Mat hidden;
-        std::vector<ncnn::Mat> next((size_t)CACHE_PAIRS * 2);
+        std::vector<ncnn::Mat> next((size_t)cache_pairs * 2);
         {
             ncnn::Extractor ex = decoder.net.create_extractor();
             ex.input("in0", embedding);
             ex.input("in1", states);
             ex.input("in2", mask);
             char name[32];
-            for (int i = 0; i < CACHE_PAIRS; i++) {
+            for (int i = 0; i < cache_pairs; i++) {
                 if (cache[(size_t)i * 2].empty()) {
                     continue;
                 }
@@ -675,7 +702,7 @@ std::vector<int> WhisperRecognizer::run_decoder(const ncnn::Mat &states) {
             if (ex.extract("out0", hidden) != 0) {
                 break;
             }
-            for (int i = 0; i < CACHE_PAIRS; i++) {
+            for (int i = 0; i < cache_pairs; i++) {
                 snprintf(name, sizeof(name), "out_cache_k%d", i);
                 ex.extract(name, next[(size_t)i * 2]);
                 snprintf(name, sizeof(name), "out_cache_v%d", i);

@@ -71,6 +71,11 @@ class WhisperRecognizer : public RefCounted {
     SmallFft fft;
     int threads = 1;
 
+    // How many attention caches travel between decode steps, read off the decoder's own
+    // structure. It is a property of the size that was exported -- tiny has eight pairs and
+    // base twelve -- so a number fixed here would decode one size and nothing else.
+    int cache_pairs = 0;
+
     // Every token as the bytes it stands for, the byte-level alphabet already undone. Decoded
     // once at load: doing it per token would run the same mapping over the same lines all day.
     std::vector<std::string> vocab;
