@@ -47,6 +47,12 @@ class WhisperASR : public NcnnASR {
     std::vector<float> mel_filters;
     SmallFft fft;
 
+    // How many mel frames the encoder takes, read off its own Input line, and the samples
+    // that make them. Whisper's own window is thirty seconds; an export for a shorter one
+    // pads a turn less and encodes it faster, and a clip past it is cut at the window.
+    int mel_frames = 0;
+    int clip_samples = 0;
+
     // How many attention caches travel between decode steps, read off the decoder's own
     // structure. It is a property of the size that was exported -- tiny has eight pairs and
     // base twelve -- so a number fixed here would decode one size and nothing else.

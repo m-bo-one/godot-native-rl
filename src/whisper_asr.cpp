@@ -107,6 +107,34 @@ std::string line_to_bytes(const char *line, int length, const short *table) {
     return out;
 }
 
+// How many mel frames the encoder's Input line declares, or Whisper's own 3000 where it says
+// nothing: `Input in0 0 1 in0 0=1000 1=80` is an export for a ten-second window. Read off the
+// graph rather than assumed, so a window chosen at export time needs no number written here.
+int declared_frames(const PackedByteArray &param) {
+    const char *text = (const char *)param.ptr();
+    const int length = param.size();
+    int at = 0;
+    while (at < length) {
+        int end = at;
+        while (end < length && text[end] != '\n') {
+            end++;
+        }
+        if (end - at > 5 && memcmp(text + at, "Input", 5) == 0) {
+            for (int i = at; i + 2 < end; i++) {
+                if (text[i] == ' ' && text[i + 1] == '0' && text[i + 2] == '=') {
+                    const int frames = atoi(text + i + 3);
+                    if (frames > 0 && frames % 2 == 0 && frames <= MEL_FRAMES) {
+                        return frames;
+                    }
+                }
+            }
+            return MEL_FRAMES;
+        }
+        at = end + 1;
+    }
+    return MEL_FRAMES;
+}
+
 // How many attention caches the decoder declares, counted off its own structure: one pair per
 // MultiHeadAttention, and a decoder layer has two of those. Reading it rather than assuming it
 // is what lets one loop run every size of an export instead of the one it was written against.
@@ -242,6 +270,8 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
     if (cache_pairs <= 0 || cache_pairs > MOST_CACHE_PAIRS) {
         return false;
     }
+    mel_frames = declared_frames(encoder.param);
+    clip_samples = mel_frames * HOP;
 
     // The fbank graph's weights are its mel filterbank and nothing else -- one MemoryData
     // layer of 201 by 80 floats, stored raw. Anything else in that file is another export.
@@ -373,12 +403,12 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
     // Reflect padding by half a window, so frame t is centred on sample t * 160 exactly as
     // torch's centred stft has it. Without it every frame is half a window early.
     const int pad = FFT_SIZE / 2;
-    std::vector<float> padded((size_t)CLIP_SAMPLES + 2 * pad);
+    std::vector<float> padded((size_t)clip_samples + 2 * pad);
     for (int i = 0; i < pad; i++) {
         padded[(size_t)i] = audio[(size_t)(pad - i)];
-        padded[(size_t)CLIP_SAMPLES + pad + i] = audio[(size_t)CLIP_SAMPLES - 2 - i];
+        padded[(size_t)clip_samples + pad + i] = audio[(size_t)clip_samples - 2 - i];
     }
-    memcpy(padded.data() + pad, audio.data(), (size_t)CLIP_SAMPLES * sizeof(float));
+    memcpy(padded.data() + pad, audio.data(), (size_t)clip_samples * sizeof(float));
 
     std::vector<float> window((size_t)FFT_SIZE);
     for (int i = 0; i < FFT_SIZE; i++) {
@@ -414,18 +444,18 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
     };
 
     if (workers == 1) {
-        band(0, MEL_FRAMES);
+        band(0, mel_frames);
     } else {
         std::vector<std::thread> pool;
-        const int each = (MEL_FRAMES + workers - 1) / workers;
+        const int each = (mel_frames + workers - 1) / workers;
         for (int i = 1; i < workers; i++) {
             const int from = i * each;
-            const int to = (i + 1) * each < MEL_FRAMES ? (i + 1) * each : MEL_FRAMES;
+            const int to = (i + 1) * each < mel_frames ? (i + 1) * each : mel_frames;
             if (from < to) {
                 pool.emplace_back(band, from, to);
             }
         }
-        band(0, each < MEL_FRAMES ? each : MEL_FRAMES);
+        band(0, each < mel_frames ? each : mel_frames);
         for (std::thread &one : pool) {
             one.join();
         }
@@ -436,7 +466,7 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
     float top = -1.0e30f;
     for (int b = 0; b < MEL_BANDS; b++) {
         float *row = mel.row(b);
-        for (int t = 0; t < MEL_FRAMES; t++) {
+        for (int t = 0; t < mel_frames; t++) {
             const float clamped = row[t] < 1.0e-10f ? 1.0e-10f : row[t];
             row[t] = log10f(clamped);
             if (row[t] > top) {
@@ -447,14 +477,14 @@ void WhisperASR::log_mel(const std::vector<float> &audio, ncnn::Mat &mel) const 
     const float floor = top - 8.0f;
     for (int b = 0; b < MEL_BANDS; b++) {
         float *row = mel.row(b);
-        for (int t = 0; t < MEL_FRAMES; t++) {
+        for (int t = 0; t < mel_frames; t++) {
             row[t] = ((row[t] > floor ? row[t] : floor) + 4.0f) / 4.0f;
         }
     }
 }
 
 // One clip through the graphs. The samples arrive at sixteen kilohertz and are padded or
-// trimmed to Whisper's own thirty seconds, which is the only length the encoder has a shape
+// trimmed to the window the encoder was exported for, which is the only length it has a shape
 // for; the text is the bytes of every token run together and read as UTF-8 once.
 String WhisperASR::_decode(const std::vector<float> &samples) {
     const double started = now_ms();
@@ -464,12 +494,12 @@ String WhisperASR::_decode(const std::vector<float> &samples) {
         language_share[i] = 0.0;
     }
 
-    std::vector<float> audio((size_t)CLIP_SAMPLES, 0.0f);
-    const size_t taken = samples.size() < (size_t)CLIP_SAMPLES ? samples.size() : (size_t)CLIP_SAMPLES;
+    std::vector<float> audio((size_t)clip_samples, 0.0f);
+    const size_t taken = samples.size() < (size_t)clip_samples ? samples.size() : (size_t)clip_samples;
     memcpy(audio.data(), samples.data(), taken * sizeof(float));
 
     ncnn::Mat mel;
-    mel.create(MEL_FRAMES, MEL_BANDS);
+    mel.create(mel_frames, MEL_BANDS);
     if (mel.empty()) {
         return String();
     }
