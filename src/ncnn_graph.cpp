@@ -7,10 +7,13 @@
 
 using namespace godot;
 
-void NcnnGraph::prepare(int num_threads) {
+void NcnnGraph::prepare(int num_threads, bool fp16_storage) {
     clear();
     net.opt.num_threads = num_threads;
     net.opt.use_vulkan_compute = false;
+    net.opt.use_fp16_packed = fp16_storage;
+    net.opt.use_fp16_storage = fp16_storage;
+    net.opt.use_fp16_arithmetic = fp16_storage;
 }
 
 // The files are read through the engine rather than by the library, so a model inside an
@@ -46,6 +49,42 @@ bool NcnnGraph::read(const String &param_path, const String &bin_path) {
 bool NcnnGraph::load(const String &param_path, const String &bin_path, int num_threads) {
     prepare(num_threads);
     return read(param_path, bin_path);
+}
+
+// The weight buffer is taken out of the way before the net is cleared and put back after, so
+// the structure is parsed against bytes that never left memory. Every layer of the new net
+// aliases them exactly as the old one did, which is why they may not be freed in between.
+bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_storage) {
+    if (weights.is_empty()) {
+        return false;
+    }
+    PackedByteArray held = weights;
+    PackedByteArray next = FileAccess::get_file_as_bytes(param_path);
+    if (next.is_empty()) {
+        return false;
+    }
+    next.append(0);
+
+    net.clear();
+    net.opt.num_threads = num_threads;
+    net.opt.use_vulkan_compute = false;
+    net.opt.use_fp16_packed = fp16_storage;
+    net.opt.use_fp16_storage = fp16_storage;
+    net.opt.use_fp16_arithmetic = fp16_storage;
+    param = next;
+    weights = held;
+
+    if (net.load_param_mem((const char *)param.ptr()) != 0) {
+        clear();
+        return false;
+    }
+    const unsigned char *cursor = (const unsigned char *)weights.ptr();
+    ncnn::DataReaderFromMemory reader(cursor);
+    if (net.load_model(reader) != 0) {
+        clear();
+        return false;
+    }
+    return true;
 }
 
 void NcnnGraph::clear() {

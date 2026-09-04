@@ -32,9 +32,18 @@ struct NcnnGraph {
     PackedByteArray param;
     PackedByteArray weights;
 
-    void prepare(int num_threads);
+    // Half-precision blob storage is a flag per graph rather than one over a whole model: a
+    // residual stream that grows past the format's ceiling -- a text encoder's does -- has to
+    // be kept single while the graphs beside it stay half, and one switch cannot say that.
+    void prepare(int num_threads, bool fp16_storage = true);
     bool read(const String &param_path, const String &bin_path);
     bool load(const String &param_path, const String &bin_path, int num_threads);
+
+    // The structure read again over the weights this graph already holds. One weight file
+    // behind several structures is what a network exported for two picture sizes is, and
+    // reading the file a second time would cost its size in memory for nothing.
+    bool reread(const String &param_path, int num_threads, bool fp16_storage = true);
+
     void clear();
 };
 
