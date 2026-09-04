@@ -46,17 +46,27 @@ Install CMake and Git with your preferred method (`winget`, installer, etc.).
 
 ## Project Setup
 
-### 1) Clone dependencies
+### 1) Fetch dependencies
 
-From repository root, clone dependencies into the expected paths:
+Both are submodules at the paths `SConstruct` looks in, pinned to the revisions this project
+is built and measured against. From repository root, one command:
 
 ```bash
-# Build against the minimum Godot you want to support (4.5) — the resulting binary also runs on newer.
-git clone -b 4.5 https://github.com/godotengine/godot-cpp.git
-mkdir -p thirdparty
-git clone https://github.com/Tencent/ncnn.git thirdparty/ncnn
-git -C thirdparty/ncnn checkout 20260526   # see "Which ncnn" below -- do not build master
+git submodule update --init
 ```
+
+- `godot-cpp/` — branch **4.5**, commit `27d9dd23c83871e0619fca5dc2cddfbfd69e926a`. The
+  minimum Godot this supports; the resulting binary also runs on newer.
+- `thirdparty/ncnn/` — tag **20260526**, commit `e54f7b1f88434e1d844ea0551b880a1cfb079ce1`.
+  See "Which ncnn" below — do not build master.
+
+Recursion stops here on purpose: ncnn carries `glslang` and `python/pybind11` of its own, and
+this build turns both off (`NCNN_VULKAN=OFF`, no Python bindings), so `--recursive` fetches a
+few hundred megabytes nothing links against. Add it only for a Vulkan ncnn.
+
+A pin moves by checking the submodule out at the new revision and committing the gitlink,
+never by editing anything inside either folder: both are somebody else's project, and a change
+made in place is lost on the next update.
 
 ### Which ncnn, and why it is pinned
 
