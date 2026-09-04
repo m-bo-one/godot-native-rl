@@ -25,11 +25,22 @@ bool NcnnGraph::read(const String &param_path, const String &bin_path) {
     // file has no reason to end with. Appended here rather than trusted to the reader.
     param.append(0);
     if (net.load_param_mem((const char *)param.ptr()) != 0) {
+        clear();
         return false;
     }
-    // Answers how many bytes it took, and zero means it took none. The buffer stays in this
-    // object because every weight in the graph is a pointer into it rather than a copy.
-    return net.load_model((const unsigned char *)weights.ptr()) != 0;
+    // Read through a DataReader, not through load_model(const unsigned char *): that overload
+    // answers how many bytes it CONSUMED and throws the loader's own status away, so a load
+    // that stopped part-way -- a layer whose weights or whose pipeline could not be allocated
+    // under memory pressure -- still answers a large non-zero number. Read as success it
+    // leaves the net holding the layers past the failure with neither, and the first extract
+    // walks into them. The buffer stays here because every weight is a pointer into it.
+    const unsigned char *cursor = (const unsigned char *)weights.ptr();
+    ncnn::DataReaderFromMemory reader(cursor);
+    if (net.load_model(reader) != 0) {
+        clear();
+        return false;
+    }
+    return true;
 }
 
 bool NcnnGraph::load(const String &param_path, const String &bin_path, int num_threads) {

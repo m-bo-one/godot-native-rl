@@ -5,6 +5,7 @@
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <datareader.h>
 #include <mat.h>
 #include <net.h>
 
