@@ -28,7 +28,7 @@ project_dir = os.path.abspath(".")
 ncnn_root = os.path.join(project_dir, "thirdparty", "ncnn")
 if not os.path.isdir(ncnn_root):
     print("Error: ncnn root was not found at {}".format(ncnn_root))
-    print("Clone it and check out {} -- see docs/dev/building.md.".format(NCNN_PIN))
+    print("It is a submodule at {} -- run `git submodule update --init`.".format(NCNN_PIN))
     Exit(1)
 
 # Per-target cross/native build dir (e.g. build-linux-x86_64, build-windows-x86_64), so a

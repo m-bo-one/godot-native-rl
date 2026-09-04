@@ -13,9 +13,9 @@ addons/godot_native_rl/bin/
 *.o
 .sconsign.dblite
 
-# Local dependencies (built/managed outside this repo)
-godot-cpp/
-thirdparty/
+# godot-cpp/ and thirdparty/ncnn/ are submodules at the pins docs/dev/building.md names, so
+# they are tracked rather than ignored. What a build writes inside them — bin/, gen/,
+# build-<platform>-<arch>/ — is ignored by each of their own .gitignore files.
 
 # Python env/cache
 .venv/
