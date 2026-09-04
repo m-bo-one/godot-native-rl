@@ -4,8 +4,11 @@
 #include "ncnn_asr.h"
 #include "ncnn_report.h"
 #include "ncnn_runner.h"
+#include "ncnn_t2i.h"
 #include "ncnn_tts.h"
 #include "piper_tts.h"
+#include "sd1_t2i.h"
+#include "sdxs_t2i.h"
 #include "whisper_asr.h"
 
 #include <godot_cpp/godot.hpp>
@@ -55,6 +58,11 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     // a script asks for it by name and holds any family as one type. No instances of its own.
     GDREGISTER_ABSTRACT_CLASS(NcnnTTS);
     GDREGISTER_CLASS(PiperTTS);
+    // The picture maker every family extends, registered for the same reason as the other two:
+    // a script asks for it by name and holds any family as one type. No instances of its own.
+    GDREGISTER_ABSTRACT_CLASS(NcnnT2I);
+    GDREGISTER_CLASS(SdxsT2I);
+    GDREGISTER_CLASS(Sd1T2I);
 }
 
 void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
