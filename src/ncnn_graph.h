@@ -27,6 +27,12 @@ namespace godot {
 // prepare() and read() are load() split in two: a family whose graph carries a layer ncnn does
 // not know registers it between them, because register_custom_layer only counts before the
 // structure is parsed.
+//
+// A load that runs out of memory still ends the process and nothing here can stop it: the
+// runtime answers a failed allocation with an empty blob rather than an error, the weight repack
+// writes through it, and a handler around the call was measured being entered and never reached.
+// What is answered here instead of faulted is the load going wrong for a reason of its own: a
+// structure asking for more weights than the file holds, which is the reader below.
 struct NcnnGraph {
     ncnn::Net net;
     PackedByteArray param;
