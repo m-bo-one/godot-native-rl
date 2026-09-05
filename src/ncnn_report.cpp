@@ -18,8 +18,12 @@ namespace {
 
 // Room for the class and the operation and nothing else. Written and read without a lock on
 // purpose -- see the header -- so it is a fixed array rather than anything that allocates.
+//
+// One per thread: a note shared by the whole process names whatever was written last by any of
+// them, so a fault during a load was reported as a decode another object had finished with, and
+// the sentence sent the next person to the wrong half of the extension.
 constexpr int NOTE_SIZE = 256;
-char last[NOTE_SIZE] = "nothing yet";
+thread_local char last[NOTE_SIZE] = "nothing yet";
 
 std::terminate_handler previous = nullptr;
 

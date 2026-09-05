@@ -14,10 +14,10 @@ namespace godot {
 // is whatever was printed before. The only place left to speak from is std::terminate itself.
 namespace ncnn_report {
 
-// The last thing the extension started doing, kept so the handler below has something to name
-// when it runs. Written on whatever thread is working and read on whatever thread is dying:
-// a fixed buffer with no lock, because a handler that blocks on a mutex held by a thread that
-// is already gone prints nothing at all. A torn read is a garbled hint, which beats silence.
+// The last thing this thread started doing, kept so the handler below has something to name
+// when it runs. A fixed buffer with no lock, because a handler that blocks on a mutex held by a
+// thread that is already gone prints nothing at all -- and one per thread, because a buffer the
+// whole process shares names the last note of any object rather than of the one that died.
 void note(const String &what);
 String last_note();
 
