@@ -22,8 +22,9 @@ namespace godot {
 // splitmix64 for the bits, Box-Muller for the shape: VITS is trained on standard normal noise,
 // and feeding it anything else -- a uniform draw, say -- is a different voice, not a noisier one.
 //
-// Seeded from the clock when the seed is zero, which is what a game wants: two characters
-// saying the same line should not say it identically.
+// A seed of zero is drawn from the clock and a process-wide counter together, which is what a
+// game wants: two characters saying the same line inside one tick should not say it
+// identically, and the clock on its own cannot tell them apart.
 class TtsNoise {
     uint64_t state;
     bool has_spare = false;

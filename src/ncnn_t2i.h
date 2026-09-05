@@ -25,8 +25,9 @@ namespace godot {
 // splitmix64 for the bits, Box-Muller for the shape: a latent is drawn from a standard normal,
 // and feeding it anything else is a different picture rather than a noisier one.
 //
-// Seeded from the clock when the seed is zero, which is what a game wants: two characters
-// asking for the same scene should not get the same frame.
+// A seed of zero is drawn from the clock and a process-wide counter together, which is what a
+// game wants: two characters asking for the same scene inside one tick should not get the same
+// frame, and the clock on its own cannot tell them apart.
 class T2INoise {
     uint64_t state;
     bool has_spare = false;

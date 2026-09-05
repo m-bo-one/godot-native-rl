@@ -52,10 +52,23 @@ const char *NO_MODEL = "Govorilka: no model is loaded, so there is nothing to sp
 const char *NO_IDS = "Govorilka: the sentence came to no symbols at all, so there is nothing "
                      "to say. A line of punctuation alone reads as silence.";
 
+// The state a seed of zero starts from. The clock alone will not do: two draws inside one tick
+// read the same microsecond and hand back the same utterance, so a counter that never repeats
+// while the process lives is folded in beside it and the pair is run through splitmix64 once.
+uint64_t state_from_clock() {
+    static std::atomic<uint64_t> turns{0};
+    const uint64_t ticks = (uint64_t)Time::get_singleton()->get_ticks_usec();
+    const uint64_t turn = turns.fetch_add(1, std::memory_order_relaxed);
+    uint64_t z = ticks * 2654435761ULL + turn * 0x9E3779B97F4A7C15ULL + 1ULL;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
 } // namespace
 
 TtsNoise::TtsNoise(uint64_t value) :
-        state(value != 0 ? value : (uint64_t)Time::get_singleton()->get_ticks_usec() * 2654435761ULL + 1ULL) {
+        state(value != 0 ? value : state_from_clock()) {
 }
 
 // splitmix64, then the top 24 bits as a fraction: taking the low bits instead reads the
