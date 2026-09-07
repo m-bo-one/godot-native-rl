@@ -115,6 +115,36 @@ if env["platform"] == "macos":
 # Link ncnn statically into the extension.
 env.Append(LIBS=[File(ncnn_static_lib)])
 
+# An ncnn built with NCNN_VULKAN=ON compiles its compute shaders through glslang, which it builds
+# from its own submodule and installs beside ncnn.lib. Those archives have to be linked here or
+# every ncnn::create_pipeline reference is undefined; a Vulkan ncnn with no glslang beside it is
+# refused by name rather than left to the linker. NCNN_VULKAN is read off the installed
+# platform.h, which is the header the extension will actually compile against.
+_ncnn_lib_dir = os.path.dirname(ncnn_static_lib)
+_ncnn_vulkan = False
+for _include in ncnn_include_paths:
+    _platform_h = os.path.join(_include, "platform.h")
+    if os.path.isfile(_platform_h):
+        with open(_platform_h, "r", encoding="utf-8", errors="replace") as _reading:
+            _ncnn_vulkan = "#define NCNN_VULKAN 1" in _reading.read()
+        break
+
+if _ncnn_vulkan:
+    # Everything the install left beside ncnn.lib: glslang's archives are named differently from
+    # one of its versions to the next -- MachineIndependent and GenericCodeGen are folded into
+    # glslang in some -- so they are taken as they are found rather than spelled out here.
+    _suffix = ".lib" if env["platform"] == "windows" else ".a"
+    _beside = sorted(name for name in os.listdir(_ncnn_lib_dir)
+                     if name.endswith(_suffix) and os.path.join(_ncnn_lib_dir, name) != ncnn_static_lib)
+    if not _beside:
+        print("Error: ncnn at {} is built with Vulkan and there is no glslang beside it in {}.".format(
+            ncnn_static_lib, _ncnn_lib_dir))
+        print("Fetch ncnn's own submodules (`git submodule update --init` inside thirdparty/ncnn)")
+        print("and build ncnn again -- see docs/dev/building.md.")
+        Exit(1)
+    env.Append(LIBS=[File(os.path.join(_ncnn_lib_dir, name)) for name in _beside])
+    print("ncnn is built with Vulkan; linking {} beside it".format(", ".join(_beside)))
+
 # An ncnn built with OpenMP makes libncnn.a reference the GNU OpenMP runtime (GOMP_parallel)
 # and pthreads. Those must be linked AFTER libncnn.a — so the linker's default --as-needed
 # keeps libgomp in DT_NEEDED — or the extension fails to load on Linux with

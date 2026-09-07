@@ -61,8 +61,15 @@ git submodule update --init
   See "Which ncnn" below — do not build master.
 
 Recursion stops here on purpose: ncnn carries `glslang` and `python/pybind11` of its own, and
-this build turns both off (`NCNN_VULKAN=OFF`, no Python bindings), so `--recursive` fetches a
-few hundred megabytes nothing links against. Add it only for a Vulkan ncnn.
+`--recursive` fetches both. A Vulkan build needs the first and never the second, so it is
+named on its own from inside ncnn's own tree:
+
+```console
+git -C thirdparty/ncnn submodule update --init glslang
+```
+
+Without it a Vulkan configure stops with a CMake `FATAL_ERROR` naming the missing submodule.
+A build with `NCNN_VULKAN=OFF` needs neither and may skip this line.
 
 A pin moves by checking the submodule out at the new revision and committing the gitlink,
 never by editing anything inside either folder: both are somebody else's project, and a change
@@ -137,17 +144,17 @@ no scons flag is needed there). If you build ncnn with OpenMP **on** instead, dr
 dominates at runtime, and `run_inference_batch` parallelizes with its own threads (each
 worker pins ncnn to 1 thread regardless).
 
-### Windows, with ncnn's own parallelism
+### Windows, with ncnn's own parallelism and a compute backend
 
 The self-contained flavour above leaves ncnn single-threaded: `NCNN_OPENMP=OFF` means the
-thread count an extension asks for never reaches the graphs. A build that wants it is one
-CMake flag and one matching SCons switch:
+thread count an extension asks for never reaches the graphs. A build that wants it, and that
+lets a graph be placed on a card, is two CMake flags and one matching SCons switch:
 
 ```bat
 cmake -S thirdparty/ncnn -B thirdparty/ncnn/build-windows-x86_64 -G "Visual Studio 17 2022" -A x64 ^
   -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF ^
   -DNCNN_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF ^
-  -DNCNN_OPENMP=ON -DNCNN_VULKAN=OFF ^
+  -DNCNN_OPENMP=ON -DNCNN_VULKAN=ON ^
   -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 cmake --build thirdparty/ncnn/build-windows-x86_64 --config Release
 cmake --install thirdparty/ncnn/build-windows-x86_64 --config Release ^
@@ -157,7 +164,14 @@ scons platform=windows target=template_release ncnn_openmp=yes disable_exception
 ```
 
 `build-windows-x86_64/install` is the first place `SConstruct` looks, so nothing has to be
-pointed anywhere. Three things this costs, and none is optional:
+pointed anywhere. Four things this costs, and none is optional:
+
+- `NCNN_VULKAN=ON` needs ncnn's `glslang` submodule fetched (see above) and **no Vulkan SDK**:
+  `NCNN_SIMPLEVK` is on by default, so ncnn carries its own loader and its own headers, and the
+  built library looks for `vulkan-1.dll` at run time. A machine with no driver loads the
+  extension and runs every graph on the processor. The install puts glslang's static archives
+  beside `ncnn.lib`, and `SConstruct` reads `NCNN_VULKAN` off the installed `platform.h` and
+  links whatever it finds there — a Vulkan ncnn with no glslang beside it is refused by name.
 
 - `ncnn_openmp=yes` adds `/openmp`, which MSVC turns into a **`vcomp140.dll`** import. That
   DLL is part of the Visual C++ runtime and has to travel beside the extension. Without the
