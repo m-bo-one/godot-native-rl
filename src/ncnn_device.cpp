@@ -73,34 +73,41 @@ size_t cache_bytes = 0;
 // Published under a counter rather than as two numbers: a reader that caught one written and one
 // not would subtract them into a negative, which is the one answer a memory row must never show.
 // Odd while it is being written, even and equal on both sides of a read that saw a whole pair.
+std::atomic<bool> has_a_reading{false};
 std::atomic<uint32_t> reading_stamp{0};
-int64_t last_free = 0;
-int64_t last_total = 0;
+std::atomic<int64_t> last_free{0};
+std::atomic<int64_t> last_total{0};
 
 void publish_reading(int64_t free_bytes, int64_t total_bytes) {
     reading_stamp.fetch_add(1, std::memory_order_acq_rel);
-    last_free = free_bytes;
-    last_total = total_bytes;
+    last_free.store(free_bytes, std::memory_order_relaxed);
+    last_total.store(total_bytes, std::memory_order_relaxed);
     reading_stamp.fetch_add(1, std::memory_order_release);
+    has_a_reading.store(true, std::memory_order_release);
 }
 
-// The last whole pair, or false where none was ever taken or a writer kept getting in the way.
-// Four tries and no lock: a reader that cannot win in four is a reader on a machine writing this
-// far more often than anything reads it, which nothing here does.
+// The last pair, and false only where none was ever taken. Four tries at catching the counter even
+// on both sides; a reader that loses all four takes the two numbers as they stand, which is two
+// readings a moment apart rather than nothing -- nothing reads as a machine with no card at all.
 bool last_reading(int64_t &free_bytes, int64_t &total_bytes) {
+    if (!has_a_reading.load(std::memory_order_acquire)) {
+        return false;
+    }
     for (int tries = 0; tries < 4; tries++) {
         const uint32_t before = reading_stamp.load(std::memory_order_acquire);
         if ((before & 1u) != 0) {
             continue;
         }
-        free_bytes = last_free;
-        total_bytes = last_total;
+        free_bytes = last_free.load(std::memory_order_relaxed);
+        total_bytes = last_total.load(std::memory_order_relaxed);
         std::atomic_thread_fence(std::memory_order_acquire);
         if (reading_stamp.load(std::memory_order_acquire) == before) {
-            return total_bytes > 0;
+            return true;
         }
     }
-    return false;
+    free_bytes = last_free.load(std::memory_order_relaxed);
+    total_bytes = last_total.load(std::memory_order_relaxed);
+    return true;
 }
 
 const char *NO_VULKAN_BUILD = "Govorilka: this build of the runner carries no Vulkan backend, so "
