@@ -12,6 +12,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -47,8 +48,10 @@ std::string device_named;
 // way out of the process and leave it standing with nothing left to destroy it.
 bool has_shut = false;
 
-// The address a host named, canonical and lower case, or empty to let this library rank one. Read
-// by the one look for a card, so a word set after that look is a word about a choice already made.
+// The address a host named, as it was written and in the spelling this library compares. Both are
+// kept because a card that is not here is worth saying in the host's own words as well as in the
+// one the devices answer. Read by the one look for a card; a word set after it changes nothing.
+std::string written_address;
 std::string wanted_address;
 
 // Which device the look settled on, as a position in the loader's enumeration. Every answer below
@@ -126,7 +129,9 @@ const char *NO_USABLE_DEVICE = "Govorilka: a Vulkan driver is installed and it o
                                "this library can use, so every graph runs on the processor.";
 const char *NO_SUCH_CARD = "Govorilka: no device on this machine reports the PCI address that was "
                            "named, so the graphs went to the card this library ranks first. A "
-                           "model told that address in another library is then on a second card: ";
+                           "model told that address in another library is then on a second card. "
+                           "Named: ";
+const char *AS_COMPARED = ", compared as: ";
 const char *STILL_HOLDING = "Govorilka: the card was given back with {0} graph(s) still loaded on "
                             "it, whose layers now point into freed pipelines. Give every model "
                             "back before the library is taken down; this is the last moment "
@@ -202,6 +207,44 @@ std::string pci_address_of(int index) {
     return std::string(written);
 }
 
+// Whether what stands at this position is the mark a virtual device carries -- "-v" and a number,
+// which one backend appends to keep several devices over one card apart.
+bool is_a_virtual_tail(const std::string &address, size_t at) {
+    if (at + 2 >= address.size()) {
+        return false;
+    }
+    for (size_t i = at + 2; i < address.size(); i++) {
+        if (isdigit((unsigned char)address[i]) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// One PCI address in the spelling this library compares. Three are in the wild and all three name
+// the same card: the four digits of domain the drivers write, the eight one tool prints, and a
+// "-v<i>" tail on a virtual device. Lower case, trimmed, domain cut to its last four digits.
+std::string canonical_address(const std::string &written) {
+    std::string address;
+    for (char one : written) {
+        address += (char)tolower((unsigned char)one);
+    }
+    const size_t first = address.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return std::string();
+    }
+    address = address.substr(first, address.find_last_not_of(" \t\r\n") + 1 - first);
+    const size_t tail = address.rfind("-v");
+    if (tail != std::string::npos && is_a_virtual_tail(address, tail)) {
+        address.erase(tail);
+    }
+    const size_t colon = address.find(':');
+    if (colon != std::string::npos && colon > 4) {
+        address.erase(0, colon - 4);
+    }
+    return address;
+}
+
 // Which device the card the host named is, or the one this library ranks -- the first discrete
 // device, else the first integrated one -- where none was named, none carries an address, or the
 // one named is on another machine's bus. A named address that matched nothing is said once, which
@@ -216,7 +259,8 @@ int index_for_the_address() {
             return index;
         }
     }
-    UtilityFunctions::push_warning(String(NO_SUCH_CARD) + String(wanted_address.c_str()));
+    UtilityFunctions::push_warning(String(NO_SUCH_CARD) + String(written_address.c_str())
+            + String(AS_COMPARED) + String(wanted_address.c_str()));
     return ranked;
 }
 #endif
@@ -309,15 +353,18 @@ bool ncnn_device::has_looked_for_a_card() {
     return has_looked;
 }
 
-// The card a host wants, by the address its drivers report, taken as it is written: the caller
-// canonicalises it. Set before the first load, because the look for a card happens once and every
-// answer afterwards reads what that look settled on; an empty word ranks one here.
+// The card a host wants, by the address its drivers report, in whichever of its three spellings
+// the host had to hand. Set before the first load: the look for a card happens once and every
+// answer afterwards reads what that look settled on. An empty word ranks one here.
 void ncnn_device::set_device_address(const String &address) {
     std::lock_guard<std::mutex> held(device_lock);
     if (has_looked) {
         return;
     }
-    wanted_address = std::string(address.utf8().get_data());
+    written_address = std::string(address.utf8().get_data());
+#if NCNN_VULKAN
+    wanted_address = canonical_address(written_address);
+#endif
 }
 
 // The PCI address of the card this library picked, or "" where there is none or the device does

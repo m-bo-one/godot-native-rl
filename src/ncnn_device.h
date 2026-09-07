@@ -48,9 +48,10 @@ int chosen_index();
 // instance, so this is what says whether a load that should have touched no device touched one.
 bool has_looked_for_a_card();
 
-// The card a host wants, by the PCI address its drivers report -- "0000:c1:00.0" -- or an empty
-// word to rank one here. Set before the first load: the look for a card happens once per process,
-// and an address that names no device on this machine is said once and the ranked card taken.
+// The card a host wants, by the PCI address its drivers report, in whichever spelling the host
+// had to hand -- "0000:c1:00.0", the eight-digit domain one tool prints, a virtual device tail --
+// or an empty word to rank one here. Set before the first load: the look for a card happens once
+// per process, and an address no device here reports is said once and the ranked card taken.
 void set_device_address(const String &address);
 
 // The PCI address of the card this library picked -- "0000:c1:00.0" -- or "" where there is none
