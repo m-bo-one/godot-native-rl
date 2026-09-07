@@ -273,9 +273,6 @@ int ncnn_device::chosen_index() {
 #endif
 }
 
-// The PCI address of the card this library picked, or "" where there is none or the device does
-// not report one. It is what another library is matched against: two cards of one model share a
-// name, and an enumeration index is a position each library walks for itself.
 // Whether anything has asked for a card yet. It is the one question a check can hold the "a load
 // onto the processor brings no device up" rule against: looking is what builds the instance.
 bool ncnn_device::has_looked_for_a_card() {
@@ -283,6 +280,9 @@ bool ncnn_device::has_looked_for_a_card() {
     return has_looked;
 }
 
+// The PCI address of the card this library picked, or "" where there is none or the device does
+// not report one. It is what another library is matched against: two cards of one model share a
+// name, and an enumeration index is a position each library walks for itself.
 String ncnn_device::chosen_identity() {
 #if NCNN_VULKAN
     std::lock_guard<std::mutex> held(device_lock);
