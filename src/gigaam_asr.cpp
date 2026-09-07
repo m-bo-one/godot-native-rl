@@ -53,12 +53,17 @@ int subsampled(int frames) {
     return frames;
 }
 
-// The cos and sin tables for `positions` positions as the encoder builds them: the twenty-
-// four frequencies once and then again, so the rotate-half layout pairs each with itself.
+// The cos and sin tables for `positions` positions: the twenty-four frequencies once, a row
+// per position. Half of the embedding wide and not all of it -- the rotate-half layer pairs
+// each frequency with itself and reads only these, and the two implementations of it disagree
+// about the stride of a wider table: the processor's walks the table's own rows, the card's
+// shader indexes `row * embed_dim / 2`. A row of forty-eight is read at half rate there, which
+// is a graph that answers plausible words at the wrong positions.
+//
 // Single precision throughout, which is what the checkpoint's own buffer was computed in.
 void rope_tables(int positions, ncnn::Mat &cosines, ncnn::Mat &sines) {
-    cosines.create(ROPE_DIM, positions, 1);
-    sines.create(ROPE_DIM, positions, 1);
+    cosines.create(ROPE_DIM / 2, positions, 1);
+    sines.create(ROPE_DIM / 2, positions, 1);
     if (cosines.empty() || sines.empty()) {
         return;
     }
@@ -71,12 +76,8 @@ void rope_tables(int positions, ncnn::Mat &cosines, ncnn::Mat &sines) {
     for (int p = 0; p < positions; p++) {
         for (int i = 0; i < ROPE_DIM / 2; i++) {
             const float angle = (float)p * inv_freq[i];
-            const float c = cosf(angle);
-            const float s = sinf(angle);
-            cos_out[p * ROPE_DIM + i] = c;
-            cos_out[p * ROPE_DIM + i + ROPE_DIM / 2] = c;
-            sin_out[p * ROPE_DIM + i] = s;
-            sin_out[p * ROPE_DIM + i + ROPE_DIM / 2] = s;
+            cos_out[p * (ROPE_DIM / 2) + i] = cosf(angle);
+            sin_out[p * (ROPE_DIM / 2) + i] = sinf(angle);
         }
     }
 }
@@ -107,10 +108,14 @@ bool GigaAMASR::_load_graphs(const String &folder, const String &language, int n
         return false;
     }
     const String bin_name = param_name.trim_suffix(".param") + ".bin";
-    // On the processor whatever was asked for. Measured on the card, this encoder returns a
-    // fragment of what it returns here -- a couple of tokens of a sentence, none at all under
-    // single precision -- with no error reported anywhere. Why is not established.
-    graph.prepare(num_threads);
+    // The device the row asked for. Half-precision storage holds here: this encoder's residual
+    // stream is narrower than the one that saturates a normalisation's variance, and the words
+    // come back the same on both devices.
+    NcnnGraph::Options how;
+    if (device.wants_the_card()) {
+        how = NcnnGraph::Options(NcnnGraph::Options::HALF, NcnnGraph::Options::CARD);
+    }
+    graph.prepare(num_threads, how);
     if (!graph.read(folder.path_join(param_name), folder.path_join(bin_name))) {
         return false;
     }
