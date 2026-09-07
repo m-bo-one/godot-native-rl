@@ -131,7 +131,9 @@ private:
     // resolve `typeinfo for ncnn::DataReader`.)
     std::vector<unsigned char> bin_copy_;
     std::unique_ptr<ncnn::Net> net_;
-    bool model_loaded_ = false;
+    // Atomic like the device beside it: a load writes it on whichever thread called, and
+    // device_memory() and is_model_loaded() read it while a host draws a row on the main one.
+    std::atomic<bool> model_loaded_{false};
     // Which device was asked for and which the graph got, the same pair every class in this
     // library carries. Read at the load and written back from the net's own options after it.
     ncnn_device::Choice device_;
