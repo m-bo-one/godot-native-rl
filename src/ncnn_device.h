@@ -39,6 +39,11 @@ bool is_available();
 // which of the three it was: the build, the driver, or the device.
 String unavailable_reason();
 
+// Which device the addon picked, as a position in the enumeration every Vulkan library on this
+// machine walks, or -1 where there is none. It is how another library in the same process is
+// pointed at this very card rather than at whichever one it would have chosen itself.
+int chosen_index();
+
 // The driver's own name for the device a graph lands on, or "" where there is none. It is the
 // raw name and never a word with the name behind it: the two halves of a row are joined on the
 // other side of the boundary, where the addon's own rule for that already lives.

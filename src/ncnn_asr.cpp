@@ -115,6 +115,20 @@ String NcnnASR::device_name() const {
     return ncnn_device::name();
 }
 
+// The addon's own choice of card, as an index into the loader's enumeration and as the driver's
+// name for it. A position rather than a name is what another library is pointed with: two cards
+// of one model are one name and two positions.
+int NcnnASR::chosen_card_index() const {
+    return ncnn_device::chosen_index();
+}
+
+String NcnnASR::chosen_card_name() const {
+    if (ncnn_device::chosen_index() < 0) {
+        return String();
+    }
+    return ncnn_device::name();
+}
+
 Dictionary NcnnASR::device_memory() const {
     if (!loaded.load() || !device.is_on_the_card()) {
         return Dictionary();
@@ -349,6 +363,8 @@ void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_device"), &NcnnASR::get_device);
     ClassDB::bind_method(D_METHOD("device_used"), &NcnnASR::device_used);
     ClassDB::bind_method(D_METHOD("device_name"), &NcnnASR::device_name);
+    ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnASR::chosen_card_index);
+    ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnASR::chosen_card_name);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnASR::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnASR::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnASR::set_shader_cache);

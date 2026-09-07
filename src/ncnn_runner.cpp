@@ -52,6 +52,8 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_device"), &NcnnRunner::get_device);
     ClassDB::bind_method(D_METHOD("device_used"), &NcnnRunner::device_used);
     ClassDB::bind_method(D_METHOD("device_name"), &NcnnRunner::device_name);
+    ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnRunner::chosen_card_index);
+    ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnRunner::chosen_card_name);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnRunner::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnRunner::set_shader_cache);
@@ -179,6 +181,20 @@ String NcnnRunner::device_used() const {
 // joins them on the other side of this boundary, where the addon's one rule for that already is.
 String NcnnRunner::device_name() const {
     if (!device_.is_on_the_card()) {
+        return String();
+    }
+    return ncnn_device::name();
+}
+
+// The addon's own choice of card, as an index into the loader's enumeration and as the driver's
+// name for it. A position rather than a name is what another library is pointed with: two cards
+// of one model are one name and two positions.
+int NcnnRunner::chosen_card_index() const {
+    return ncnn_device::chosen_index();
+}
+
+String NcnnRunner::chosen_card_name() const {
+    if (ncnn_device::chosen_index() < 0) {
         return String();
     }
     return ncnn_device::name();

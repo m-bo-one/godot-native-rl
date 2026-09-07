@@ -102,11 +102,10 @@ void look_for_a_device() {
 }
 
 #if NCNN_VULKAN
-// The file read into a cache, with the device's own lock given back. A file that will not read is
-// a miss and never a refusal: every shader it does not carry is compiled as it always was, and the
-// bytes it did carry are what says whether a later save has anything new to write.
+// The file read into a cache. The caller holds the file lock already, which is what keeps the
+// cache alive: shut_down() cannot free it without that lock. A file that will not read is a miss
+// and never a refusal, and the bytes it did carry say whether a later save has anything to write.
 void read_the_cache(ncnn::PipelineCache *into, const std::string &named) {
-    std::lock_guard<std::mutex> reading(file_lock);
     if (into->load_cache(named.c_str()) != 0) {
         cache_bytes = 0;
         return;
@@ -140,6 +139,22 @@ String ncnn_device::unavailable_reason() {
     std::lock_guard<std::mutex> held(device_lock);
     look_for_a_device();
     return has_device ? String() : String(no_device_said.c_str());
+}
+
+// The index ncnn picked out of the loader's own enumeration: the first discrete device, else the
+// first integrated one, else the first of any. It is a position in the list every Vulkan library
+// on this machine enumerates, which is what lets another one be pointed at the same card.
+int ncnn_device::chosen_index() {
+#if NCNN_VULKAN
+    std::lock_guard<std::mutex> held(device_lock);
+    look_for_a_device();
+    if (!has_device) {
+        return -1;
+    }
+    return ncnn::get_default_gpu_index();
+#else
+    return -1;
+#endif
 }
 
 String ncnn_device::name() {
@@ -243,8 +258,8 @@ ncnn::PipelineCache *ncnn_device::shared_cache() {
         }
         made = cache;
     }
-    // The file is read with the device's own lock given back: it is megabytes off a disk, and a
-    // host drawing a memory row on the main thread asks that lock for the card's free bytes.
+    // The megabytes off the disk happen with the device's own lock given back, so a host drawing
+    // a memory row on the main thread is not waiting behind them.
     if (is_fresh) {
         read_the_cache(made, wanted);
     }

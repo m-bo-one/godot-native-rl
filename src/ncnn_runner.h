@@ -75,6 +75,12 @@ public:
     // Two cards in one machine are two different answers, so a row that names one asks here.
     String device_name() const;
 
+    // Which card the addon picked and what the driver calls it, whatever this holder has loaded.
+    // They are about the machine rather than about these graphs: a host points another library at
+    // this very card with the index, and a check holds the name against what that library reports.
+    int chosen_card_index() const;
+    String chosen_card_name() const;
+
     // Why the card was asked for and the processor got the graph, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for.
     String device_problem() const;
