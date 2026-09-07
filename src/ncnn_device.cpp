@@ -65,6 +65,12 @@ std::mutex file_lock;
 // load that compiled nothing new leaves the count where it is, and nothing is written.
 size_t cache_bytes = 0;
 
+// The last pair the card answered, handed back where the lock is busy. A reading of nothing and a
+// machine with no card read alike to whoever draws the row, and a row that fell away mid-load
+// would say the card had gone.
+int64_t last_free = 0;
+int64_t last_total = 0;
+
 const char *NO_VULKAN_BUILD = "Govorilka: this build of the runner carries no Vulkan backend, so "
                               "every graph runs on the processor.";
 const char *NO_DRIVER = "Govorilka: no Vulkan driver was found on this machine, so every graph "
@@ -265,6 +271,13 @@ Dictionary ncnn_device::memory() {
     // load may be inside the first look for a card, and a frame may not wait seconds for a driver.
     std::unique_lock<std::mutex> held(device_lock, std::try_to_lock);
     if (!held.owns_lock()) {
+        // The reading this process last took rather than nothing at all: nothing reads as a
+        // machine with no card, and a row that fell away while a load held the lock would say
+        // the card had gone. A pair a moment old is the honest answer to "not just now".
+        if (last_total > 0) {
+            answer["total_bytes"] = last_total;
+            answer["free_bytes"] = last_free;
+        }
         return answer;
     }
     look_for_a_device();
@@ -305,8 +318,10 @@ Dictionary ncnn_device::memory() {
     if (budget <= 0) {
         return answer;
     }
-    answer["total_bytes"] = budget;
-    answer["free_bytes"] = budget > used ? budget - used : (int64_t)0;
+    last_total = budget;
+    last_free = budget > used ? budget - used : (int64_t)0;
+    answer["total_bytes"] = last_total;
+    answer["free_bytes"] = last_free;
 #endif
     return answer;
 }
@@ -500,6 +515,8 @@ void ncnn_device::shut_down() {
     has_device = false;
     nets_on_the_card = 0;
     cache_bytes = 0;
+    last_free = 0;
+    last_total = 0;
     device_named.clear();
     // The reason goes with the device. "There is no card" with nothing after it is a sentence a
     // host would print blank, and after this there really is none.
