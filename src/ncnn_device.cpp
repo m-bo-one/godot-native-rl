@@ -22,7 +22,8 @@ namespace {
 
 // One lock over everything below. The library's own instance and device creation are locked
 // already; what is not is this file's three answers, and two loads on two threads reach them at
-// once. It is held for a handful of statements and never around a load.
+// once. The one call it is held across for longer than a handful of statements is the first look
+// for a card, which is seconds on a cold driver -- so memory() asks for it and gives up.
 std::mutex device_lock;
 
 // Whether the card has been looked for yet, and what was found. Looking costs a Vulkan instance,
@@ -157,9 +158,13 @@ String ncnn_device::name() {
 Dictionary ncnn_device::memory() {
     Dictionary answer;
 #if NCNN_VULKAN
-    // Held across the query and not only across the look: the instance the query reads through is
-    // what shut_down() destroys, and a reading taken while that runs is a read of freed memory.
-    std::lock_guard<std::mutex> held(device_lock);
+    // Asked for rather than waited on. The lock is held across the query -- the instance it reads
+    // through is what shut_down() destroys -- but a host draws this on the main thread while a
+    // load may be inside the first look for a card, and a frame may not wait seconds for a driver.
+    std::unique_lock<std::mutex> held(device_lock, std::try_to_lock);
+    if (!held.owns_lock()) {
+        return answer;
+    }
     look_for_a_device();
     if (!has_device) {
         return answer;
@@ -218,6 +223,10 @@ void ncnn_device::net_closed() {
 
 #if NCNN_VULKAN
 ncnn::PipelineCache *ncnn_device::shared_cache() {
+    // The file lock first and the device's second, which is the order shut_down() takes them in
+    // and the only order that cannot deadlock. Holding this one for the whole call is also what
+    // keeps the cache alive across the read: shut_down() cannot free it without this lock.
+    std::lock_guard<std::mutex> reading(file_lock);
     ncnn::PipelineCache *made = nullptr;
     std::string wanted;
     bool is_fresh = false;
@@ -249,6 +258,9 @@ ncnn::PipelineCache *ncnn_device::shared_cache() {
 
 void ncnn_device::set_cache_path(const String &path) {
 #if NCNN_VULKAN
+    // The file lock first, as everywhere: it is what shut_down() has to take before it can free
+    // the cache, so a pointer read under the device's lock below stays alive while this holds it.
+    std::lock_guard<std::mutex> reading(file_lock);
     ncnn::PipelineCache *made = nullptr;
     std::string wanted;
     {
@@ -299,12 +311,15 @@ bool ncnn_device::Choice::is_on_the_card() const {
     return on_gpu.load();
 }
 
-// Written only where this process has more shaders than the file already carries. The library
-// writes it atomically itself -- a sibling of its own, then a replacing move -- so nothing here
-// touches the file; what is saved here is the megabytes of writing a load that compiled nothing
-// new would otherwise repeat.
+// Written only where this process holds more shaders than the file carried when it last looked.
+// The library writes it atomically itself -- a sibling of its own, then a replacing move -- so
+// nothing here touches the file; what is saved is the megabytes of writing that a load which
+// compiled nothing new would otherwise repeat.
 bool ncnn_device::save_cache() {
 #if NCNN_VULKAN
+    // The file lock first, as everywhere: shut_down() takes it before the device's and cannot
+    // free the cache without it, which is what makes the pointer read below safe to use here.
+    std::lock_guard<std::mutex> writing(file_lock);
     ncnn::PipelineCache *kept = nullptr;
     std::string wanted;
     {
