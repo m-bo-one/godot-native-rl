@@ -1,6 +1,5 @@
 #include "ncnn_device.h"
 
-#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
@@ -12,7 +11,6 @@
 #include <pipelinecache.h>
 #endif
 
-#include <cstdio>
 #include <filesystem>
 #include <mutex>
 #include <string>
