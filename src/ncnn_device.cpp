@@ -129,12 +129,12 @@ String ncnn_device::name() {
 Dictionary ncnn_device::memory() {
     Dictionary answer;
 #if NCNN_VULKAN
-    {
-        std::lock_guard<std::mutex> held(device_lock);
-        look_for_a_device();
-        if (!has_device) {
-            return answer;
-        }
+    // Held across the query and not only across the look: the instance the query reads through is
+    // what shut_down() destroys, and a reading taken while that runs is a read of freed memory.
+    std::lock_guard<std::mutex> held(device_lock);
+    look_for_a_device();
+    if (!has_device) {
+        return answer;
     }
     const int index = ncnn::get_default_gpu_index();
     const ncnn::GpuInfo &info = ncnn::get_gpu_info(index);
