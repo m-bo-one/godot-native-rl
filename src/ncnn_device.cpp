@@ -12,8 +12,10 @@
 #endif
 
 #include <cstdio>
+#include <filesystem>
 #include <mutex>
 #include <string>
+#include <system_error>
 
 using namespace godot;
 
@@ -258,24 +260,28 @@ bool ncnn_device::Choice::is_on_the_card() const {
     return on_gpu.load();
 }
 
-// Written beside the file and moved over it. save_cache() truncates what it is handed and then
-// writes, so a process that stopped part-way through -- and one holding a card is a process that
-// can -- would leave the next run with a file that reads as a miss for every shader in it.
+// Written beside the file and moved over it in one step. save_cache() truncates what it is handed
+// and then writes, so a process that stopped part-way through would leave the next run a file that
+// reads as a miss for every shader in it; the sibling carries this process's own number, because
+// two games saving at once under one name would each remove the other's half-written file.
 bool ncnn_device::save_cache() {
 #if NCNN_VULKAN
     std::lock_guard<std::mutex> held(device_lock);
     if (cache == nullptr || cache_file.empty()) {
         return false;
     }
-    const std::string beside = cache_file + ".writing";
+    const std::string beside = cache_file + ".writing."
+            + std::to_string(OS::get_singleton()->get_process_id());
     if (cache->save_cache(beside.c_str()) != 0) {
         std::remove(beside.c_str());
         return false;
     }
-    // Removed first because rename() over an existing file is an error on Windows. The window
-    // between the two is a run that compiles its shaders again, which is what a miss already is.
-    std::remove(cache_file.c_str());
-    if (std::rename(beside.c_str(), cache_file.c_str()) != 0) {
+    // One move that replaces what is there, rather than a remove and a rename: between those two
+    // a reader finds no file at all, and on Windows a rename onto an existing name simply fails.
+    std::error_code failed;
+    std::filesystem::rename(std::filesystem::u8path(beside),
+            std::filesystem::u8path(cache_file), failed);
+    if (failed) {
         std::remove(beside.c_str());
         return false;
     }
