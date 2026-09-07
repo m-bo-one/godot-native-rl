@@ -107,10 +107,9 @@ bool GigaAMASR::_load_graphs(const String &folder, const String &language, int n
         return false;
     }
     const String bin_name = param_name.trim_suffix(".param") + ".bin";
-    // On the processor whatever was asked for. This encoder carries 64 operations the backend has
-    // no shader for, spread through every one of its attention blocks, and on the card it answers
-    // a couple of tokens of a sentence it gets whole here -- nothing at all under single precision
-    // -- with no error reported anywhere. device_used() then says the processor, which is true.
+    // On the processor whatever was asked for. Measured on the card, this encoder returns a
+    // fragment of what it returns here -- a couple of tokens of a sentence, none at all under
+    // single precision -- with no error reported anywhere. Why is not established.
     graph.prepare(num_threads);
     if (!graph.read(folder.path_join(param_name), folder.path_join(bin_name))) {
         return false;
