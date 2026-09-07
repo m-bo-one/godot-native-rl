@@ -71,6 +71,10 @@ public:
     String get_device() const;
     String device_used() const;
 
+    // The driver's own name for the card the graph is on, or "" from a graph on the processor.
+    // Two cards in one machine are two different answers, so a row that names one asks here.
+    String device_name() const;
+
     // Why the card was asked for and the processor got the graph, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for.
     String device_problem() const;
@@ -108,6 +112,11 @@ private:
     // parsed: the loader reads them there and turns Vulkan off itself where there is no device,
     // so this must run before load_param or the graph lands on the processor whatever was asked.
     void apply_device();
+    // This runner's entry in the library's count of graphs on the card, raised once a load has
+    // landed there and lowered before the net goes. Without it a runner freed with a graph still
+    // on the card would hold the card open against the shutdown that frees the shared cache.
+    void count_it_in();
+    void count_it_out();
     // True if it's safe to replace net_ now: refuses while an async inference is in flight
     // (logs via p_where) and joins a finished worker. Call before swapping net_ in load_*.
     bool ready_to_swap_net(const char *p_where);
@@ -126,6 +135,8 @@ private:
     // Which device was asked for and which the graph got, the same pair every class in this
     // library carries. Read at the load and written back from the net's own options after it.
     ncnn_device::Choice device_;
+    // Whether this runner's graph is counted as one of the library's nets on the card.
+    bool counted_ = false;
     String input_blob_name_ = "input";
     String output_blob_name_ = "output";
     PackedInt32Array input_shape_;

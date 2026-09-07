@@ -4,6 +4,8 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <atomic>
+
 namespace ncnn {
 class PipelineCache;
 }
@@ -37,17 +39,21 @@ bool is_available();
 // which of the three it was: the build, the driver, or the device.
 String unavailable_reason();
 
-// The driver's own name for the device a graph lands on, or "" where there is none. Two cards in
-// one machine are two different answers, which is why a row carries the name and not the word.
+// The driver's own name for the device a graph lands on, or "" where there is none. It is the
+// raw name and never a word with the name behind it: the two halves of a row are joined on the
+// other side of the boundary, where the addon's own rule for that already lives.
 String name();
 
-// The word a row carries: "gpu <the driver's name>" for a graph that got the card, "cpu" for one
-// that did not. The one place the two halves of a row are joined.
-String word_for(bool on_gpu);
-
-// What the card has free and in total, in bytes, or an empty dictionary where there is no device.
-// The free number is the driver's own budget, which is what an allocation is actually held to.
+// What the card has free and in total, in bytes, or an empty dictionary where no driver reports a
+// budget. The pair comes from VK_EXT_memory_budget and from nowhere else -- without the extension
+// the library's own answer is a fixed fraction of the heap, which is not a reading of anything.
 Dictionary memory();
+
+// How many nets are loaded on the card right now. A graph raises this as it lands there and lowers
+// it as it is cleared, and shut_down() refuses while any is up: the cache holds the pipelines those
+// nets run through, so freeing it under a loaded net leaves its layers pointing into freed memory.
+void net_opened();
+void net_closed();
 
 // The pipeline cache every net shares, or null where there is no device. Without it each net
 // builds its own and compiles every shader again, which is seconds per graph rather than
@@ -67,8 +73,10 @@ bool save_cache();
 // The compiled shaders and the device given back, in that order, while the library is still
 // loaded. It is called from the extension's own terminator: left to the library's static
 // destructors the device is torn down with the cache's pipelines still alive on it, and the
-// process stops answering on the way out instead of exiting. Idempotent, and a no-op where no
-// device was ever asked for.
+// process stops answering on the way out instead of exiting.
+//
+// Once it has run nothing looks for a card again -- a question asked during teardown would build
+// a fresh instance on the way out -- so every answer here is the answer of a machine with none.
 void shut_down();
 
 // The device a family asked for and the one its graphs got, which is the whole of what a class on
@@ -77,6 +85,9 @@ void shut_down();
 //
 // The two are kept apart on purpose: a machine with no driver runs the graphs on the processor and
 // a row that reported the request would say the card while nothing was on it.
+// Both halves are atomic. The request is written on whichever thread set the property and read on
+// the pool thread the load runs on; the answer is written there and read by a host on the main
+// thread as it draws a row, and a torn bool would be a row saying the wrong device.
 struct Choice {
     // What the host asked for. Anything that is not the card's word is the processor: a row is
     // one of two, and a word nobody recognises must not become a third answer.
@@ -85,19 +96,21 @@ struct Choice {
     // The word back, for the property a host reads. It is what was asked, not what happened.
     String asked() const;
 
+    // What the graphs are handed. True only when the card was asked for; the loader still turns
+    // it off per net where there is no device.
+    bool wants_the_card() const;
+
     // Written by the family once its graphs are loaded, from what each graph reports it got.
     void landed_on(bool on_gpu);
 
-    // What a footprint row carries: "gpu <the driver's name>", or "cpu". Before a load it is the
-    // processor, which is true -- nothing is loaded anywhere.
-    String landed() const;
-
-    // What the graphs are handed. True only when the card was asked for; the loader still turns
-    // it off per net where there is no device.
-    bool wants_gpu = false;
+    // Which device the graphs are on, as the bare word and as the question behind it. Before a
+    // load it is the processor, which is true -- nothing is loaded anywhere.
+    String landed_word() const;
+    bool is_on_the_card() const;
 
 private:
-    bool on_gpu = false;
+    std::atomic<bool> wants_gpu{false};
+    std::atomic<bool> on_gpu{false};
 };
 
 } // namespace ncnn_device

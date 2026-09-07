@@ -73,8 +73,8 @@ protected:
     // work -- a front end computed by hand -- across the same number the graphs run on.
     int threads = 1;
 
-    // Which device was asked for, and which the graphs got. A family reads `wants_gpu` as it
-    // prepares each graph -- not all of them win on the card -- and writes back what landed.
+    // Which device was asked for, and which the graphs got. A family reads wants_the_card() as
+    // it prepares each graph -- not all of them win on the card -- and writes back what landed.
     ncnn_device::Choice device;
 
     // The two halves a family supplies. _load_graphs reads its own files out of the folder
@@ -122,6 +122,10 @@ public:
     void set_device(const String &word);
     String get_device() const;
     String device_used() const;
+
+    // The driver's own name for the card the graphs are on, or "" from graphs on the processor.
+    // Two cards in one machine are two different answers, so a row that names one asks here.
+    String device_name() const;
 
     // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for. It is

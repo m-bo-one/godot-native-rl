@@ -56,9 +56,11 @@ private:
 // a first read and a structure read again over the same weights -- cannot drift apart in either.
 namespace {
 
-void set_options(ncnn::Net &net, int num_threads, bool fp16_storage, bool wants_gpu) {
+void set_options(ncnn::Net &net, int num_threads, const NcnnGraph::Options &how) {
+    const bool fp16_storage = how.precision == NcnnGraph::Options::HALF;
+    const bool wants_the_card = how.device == NcnnGraph::Options::CARD;
     net.opt.num_threads = num_threads;
-    net.opt.use_vulkan_compute = wants_gpu && godot::ncnn_device::is_available();
+    net.opt.use_vulkan_compute = wants_the_card && godot::ncnn_device::is_available();
     net.opt.use_fp16_packed = fp16_storage;
     net.opt.use_fp16_storage = fp16_storage;
     net.opt.use_fp16_arithmetic = fp16_storage;
@@ -74,11 +76,39 @@ void set_options(ncnn::Net &net, int num_threads, bool fp16_storage, bool wants_
 
 } // namespace
 
-void NcnnGraph::prepare(int num_threads, bool fp16_storage, bool wants_gpu) {
-    clear();
-    set_options(net, num_threads, fp16_storage, wants_gpu);
+NcnnGraph::Options::Device NcnnGraph::Options::wanted(bool wants_the_card) {
+    if (wants_the_card) {
+        return CARD;
+    }
+    return PROCESSOR;
 }
 
+NcnnGraph::~NcnnGraph() {
+    count_it_out();
+}
+
+// The library's count of graphs on the card, raised and lowered from the net's own options: a
+// graph asked for a card there was none of loaded on the processor and is not one of them.
+void NcnnGraph::count_it_in() {
+    if (counted || !net.opt.use_vulkan_compute) {
+        return;
+    }
+    counted = true;
+    ncnn_device::net_opened();
+}
+
+void NcnnGraph::count_it_out() {
+    if (!counted) {
+        return;
+    }
+    counted = false;
+    ncnn_device::net_closed();
+}
+
+void NcnnGraph::prepare(int num_threads, const Options &how) {
+    clear();
+    set_options(net, num_threads, how);
+}
 
 bool NcnnGraph::runs_on_gpu() const {
     return net.opt.use_vulkan_compute;
@@ -114,6 +144,7 @@ bool NcnnGraph::read(const String &param_path, const String &bin_path) {
         return false;
     }
     ncnn_report::note(String("loaded ") + param_path.get_file());
+    count_it_in();
     return true;
 }
 
@@ -125,8 +156,7 @@ bool NcnnGraph::load(const String &param_path, const String &bin_path, int num_t
 // The weight buffer is taken out of the way before the net is cleared and put back after, so
 // the structure is parsed against bytes that never left memory. Every layer of the new net
 // aliases them exactly as the old one did, which is why they may not be freed in between.
-bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_storage,
-        bool wants_gpu) {
+bool NcnnGraph::reread(const String &param_path, int num_threads, const Options &how) {
     if (weights.is_empty()) {
         return false;
     }
@@ -138,7 +168,8 @@ bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_stor
     next.append(0);
 
     net.clear();
-    set_options(net, num_threads, fp16_storage, wants_gpu);
+    count_it_out();
+    set_options(net, num_threads, how);
     param = next;
     weights = held;
 
@@ -154,11 +185,13 @@ bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_stor
         return false;
     }
     ncnn_report::note(String("re-loaded ") + param_path.get_file());
+    count_it_in();
     return true;
 }
 
 void NcnnGraph::clear() {
     net.clear();
+    count_it_out();
     param = PackedByteArray();
     weights = PackedByteArray();
 }

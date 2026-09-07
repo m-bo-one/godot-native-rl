@@ -199,7 +199,6 @@ bool NcnnT2I::load(const String &model_dir, int num_threads) {
     return true;
 }
 
-
 void NcnnT2I::set_device(const String &word) {
     device.ask_for(word);
 }
@@ -209,18 +208,27 @@ String NcnnT2I::get_device() const {
 }
 
 String NcnnT2I::device_used() const {
-    return device.landed();
+    return device.landed_word();
+}
+
+// The driver's own name and nothing built out of it. A row wanting the word and the name together
+// joins them on the other side of this boundary, where the addon's one rule for that already is.
+String NcnnT2I::device_name() const {
+    if (!device.is_on_the_card()) {
+        return String();
+    }
+    return ncnn_device::name();
 }
 
 Dictionary NcnnT2I::device_memory() const {
-    if (!loaded.load() || device.landed() == String(ncnn_device::CPU_WORD)) {
+    if (!loaded.load() || !device.is_on_the_card()) {
         return Dictionary();
     }
     return ncnn_device::memory();
 }
 
 String NcnnT2I::device_problem() const {
-    if (!device.wants_gpu) {
+    if (!device.wants_the_card()) {
         return String();
     }
     return ncnn_device::unavailable_reason();
@@ -1041,6 +1049,7 @@ void NcnnT2I::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnT2I::set_device);
     ClassDB::bind_method(D_METHOD("get_device"), &NcnnT2I::get_device);
     ClassDB::bind_method(D_METHOD("device_used"), &NcnnT2I::device_used);
+    ClassDB::bind_method(D_METHOD("device_name"), &NcnnT2I::device_name);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnT2I::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnT2I::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnT2I::set_shader_cache);

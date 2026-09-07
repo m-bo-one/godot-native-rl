@@ -50,8 +50,8 @@ public:
 private:
     static String mark_for(int width, int height);
     static bool read_pair(const PackedStringArray &files, const String &model_dir,
-            const char *mark, const char *what, NcnnGraph &into, int num_threads, bool fp16,
-            bool wants_gpu, String &problem);
+            const char *mark, const char *what, NcnnGraph &into, int num_threads,
+            const NcnnGraph::Options &how, String &problem);
 };
 
 } // namespace godot

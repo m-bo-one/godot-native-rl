@@ -210,8 +210,11 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
         // precision inside a normalisation's variance -- on the card that happens in the shader,
         // before the sum is promoted -- which comes back as an empty transcription rather than as
         // an error. Measured: whisper_base heard nothing at all under half-precision storage.
-        const bool on_the_card = part.may_use_the_card && device.wants_gpu;
-        part.graph->prepare(num_threads, !on_the_card, on_the_card);
+        NcnnGraph::Options how;
+        if (part.may_use_the_card && device.wants_the_card()) {
+            how = NcnnGraph::Options(NcnnGraph::Options::SINGLE, NcnnGraph::Options::CARD);
+        }
+        part.graph->prepare(num_threads, how);
         if (!part.graph->read(folder.path_join(param_name), folder.path_join(bin_name))) {
             return false;
         }

@@ -36,12 +36,19 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
     // overflows half precision inside a normalisation, and the result is a picture of something
     // else with no error anywhere. It stays on the processor with it -- the same normalisation
     // squares into a half blob on the card -- and one lookup per token has nothing to win there.
-    if (!read_pair(files, model_dir, CLIP_MARK, "text encoder", clip, num_threads,
-                !text_encoder_fp32, false, problem)) {
+    NcnnGraph::Options clip_how;
+    if (text_encoder_fp32) {
+        clip_how.precision = NcnnGraph::Options::SINGLE;
+    }
+    if (!read_pair(files, model_dir, CLIP_MARK, "text encoder", clip, num_threads, clip_how,
+                problem)) {
         return false;
     }
-    if (!read_pair(files, model_dir, DEC_MARK, "decoder", dec, num_threads, true,
-                device.wants_gpu, problem)) {
+    // The denoiser and the decoder go wherever the host asked, at half precision: neither has a
+    // normalisation wide enough to saturate, and both are the whole of what a picture costs.
+    NcnnGraph::Options how;
+    how.device = NcnnGraph::Options::wanted(device.wants_the_card());
+    if (!read_pair(files, model_dir, DEC_MARK, "decoder", dec, num_threads, how, problem)) {
         return false;
     }
 
@@ -64,7 +71,7 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
     }
     const String unet_param = pick(files, mark_for(sizes[0].first, sizes[0].second),
             PARAM_SUFFIX);
-    unet.prepare(num_threads, true, device.wants_gpu);
+    unet.prepare(num_threads, how);
     if (!unet.read(model_dir.path_join(unet_param), model_dir.path_join(unet_bin))) {
         problem = String("Govorilka: the denoiser would not load from \"{0}\" and \"{1}\".")
                           .format(Array::make(unet_param, unet_bin));
@@ -79,7 +86,7 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
 }
 
 bool Sd1T2I::read_pair(const PackedStringArray &files, const String &model_dir, const char *mark,
-        const char *what, NcnnGraph &into, int num_threads, bool fp16, bool wants_gpu,
+        const char *what, NcnnGraph &into, int num_threads, const NcnnGraph::Options &how,
         String &problem) {
     const String param = pick(files, mark, PARAM_SUFFIX);
     const String weights = pick(files, mark, BIN_SUFFIX);
@@ -89,7 +96,7 @@ bool Sd1T2I::read_pair(const PackedStringArray &files, const String &model_dir, 
                           .format(Array::make(what, model_dir, mark, PARAM_SUFFIX, BIN_SUFFIX));
         return false;
     }
-    into.prepare(num_threads, fp16, wants_gpu);
+    into.prepare(num_threads, how);
     if (!into.read(model_dir.path_join(param), model_dir.path_join(weights))) {
         problem = String("Govorilka: the {0} would not load from \"{1}\" and \"{2}\".")
                           .format(Array::make(what, param, weights));
@@ -134,8 +141,13 @@ bool Sd1T2I::_prepare_size(int width, int height, String &problem) {
         return false;
     }
 
+    // The same pair the first read used. A re-read that forgot the device would put the denoiser
+    // back on the processor the first time a host asked for another size, with nothing but the
+    // clock to say so.
+    NcnnGraph::Options how;
+    how.device = NcnnGraph::Options::wanted(device.wants_the_card());
     const double at = now_ms();
-    if (!unet.reread(folder.path_join(param), threads, true, device.wants_gpu)) {
+    if (!unet.reread(folder.path_join(param), threads, how)) {
         unet_width = 0;
         unet_height = 0;
         problem = String("Govorilka: the {0}x{1} structure would not read over these weights.")

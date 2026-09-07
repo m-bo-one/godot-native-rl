@@ -94,7 +94,6 @@ bool NcnnASR::load(const String &model_dir, const String &language, int num_thre
     return true;
 }
 
-
 void NcnnASR::set_device(const String &word) {
     device.ask_for(word);
 }
@@ -104,18 +103,27 @@ String NcnnASR::get_device() const {
 }
 
 String NcnnASR::device_used() const {
-    return device.landed();
+    return device.landed_word();
+}
+
+// The driver's own name and nothing built out of it. A row wanting the word and the name together
+// joins them on the other side of this boundary, where the addon's one rule for that already is.
+String NcnnASR::device_name() const {
+    if (!device.is_on_the_card()) {
+        return String();
+    }
+    return ncnn_device::name();
 }
 
 Dictionary NcnnASR::device_memory() const {
-    if (!loaded.load() || device.landed() == String(ncnn_device::CPU_WORD)) {
+    if (!loaded.load() || !device.is_on_the_card()) {
         return Dictionary();
     }
     return ncnn_device::memory();
 }
 
 String NcnnASR::device_problem() const {
-    if (!device.wants_gpu) {
+    if (!device.wants_the_card()) {
         return String();
     }
     return ncnn_device::unavailable_reason();
@@ -340,6 +348,7 @@ void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnASR::set_device);
     ClassDB::bind_method(D_METHOD("get_device"), &NcnnASR::get_device);
     ClassDB::bind_method(D_METHOD("device_used"), &NcnnASR::device_used);
+    ClassDB::bind_method(D_METHOD("device_name"), &NcnnASR::device_name);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnASR::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnASR::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnASR::set_shader_cache);

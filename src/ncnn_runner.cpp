@@ -26,6 +26,7 @@ NcnnRunner::~NcnnRunner() {
     if (async_worker_.joinable()) {
         async_worker_.join();
     }
+    count_it_out();
 }
 
 void NcnnRunner::_bind_methods() {
@@ -50,6 +51,7 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnRunner::set_device);
     ClassDB::bind_method(D_METHOD("get_device"), &NcnnRunner::get_device);
     ClassDB::bind_method(D_METHOD("device_used"), &NcnnRunner::device_used);
+    ClassDB::bind_method(D_METHOD("device_name"), &NcnnRunner::device_name);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnRunner::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnRunner::set_shader_cache);
@@ -73,6 +75,7 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
         return false;
     }
 
+    count_it_out();
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
     device_.landed_on(false);
@@ -100,6 +103,7 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
 
     model_loaded_ = true;
     device_.landed_on(net_->opt.use_vulkan_compute);
+    count_it_in();
     ncnn_device::save_cache();
     return true;
 }
@@ -113,6 +117,7 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
         return false;
     }
 
+    count_it_out();
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
     device_.landed_on(false);
@@ -153,6 +158,7 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
 
     model_loaded_ = true;
     device_.landed_on(net_->opt.use_vulkan_compute);
+    count_it_in();
     ncnn_device::save_cache();
     return true;
 }
@@ -166,18 +172,27 @@ String NcnnRunner::get_device() const {
 }
 
 String NcnnRunner::device_used() const {
-    return device_.landed();
+    return device_.landed_word();
+}
+
+// The driver's own name and nothing built out of it. A row wanting the word and the name together
+// joins them on the other side of this boundary, where the addon's one rule for that already is.
+String NcnnRunner::device_name() const {
+    if (!device_.is_on_the_card()) {
+        return String();
+    }
+    return ncnn_device::name();
 }
 
 String NcnnRunner::device_problem() const {
-    if (!device_.wants_gpu) {
+    if (!device_.wants_the_card()) {
         return String();
     }
     return ncnn_device::unavailable_reason();
 }
 
 Dictionary NcnnRunner::device_memory() const {
-    if (!model_loaded_ || device_.landed() == String(ncnn_device::CPU_WORD)) {
+    if (!model_loaded_ || !device_.is_on_the_card()) {
         return Dictionary();
     }
     return ncnn_device::memory();
@@ -195,12 +210,30 @@ void NcnnRunner::apply_device() {
     if (!net_) {
         return;
     }
-    net_->opt.use_vulkan_compute = device_.wants_gpu && ncnn_device::is_available();
+    net_->opt.use_vulkan_compute = device_.wants_the_card() && ncnn_device::is_available();
 #if NCNN_VULKAN
     if (net_->opt.use_vulkan_compute) {
         net_->opt.pipeline_cache = ncnn_device::shared_cache();
     }
 #endif
+}
+
+// The library's count of graphs on the card, raised and lowered from the net's own options: a
+// graph asked for a card there was none of loaded on the processor and is not one of them.
+void NcnnRunner::count_it_in() {
+    if (counted_ || !net_ || !net_->opt.use_vulkan_compute) {
+        return;
+    }
+    counted_ = true;
+    ncnn_device::net_opened();
+}
+
+void NcnnRunner::count_it_out() {
+    if (!counted_) {
+        return;
+    }
+    counted_ = false;
+    ncnn_device::net_closed();
 }
 
 PackedFloat32Array NcnnRunner::run_inference(const PackedFloat32Array &p_input) {

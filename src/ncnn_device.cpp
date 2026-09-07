@@ -1,5 +1,7 @@
 #include "ncnn_device.h"
 
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
 
 #include <platform.h>
@@ -9,6 +11,7 @@
 #include <pipelinecache.h>
 #endif
 
+#include <cstdio>
 #include <mutex>
 #include <string>
 
@@ -33,6 +36,15 @@ bool has_device = false;
 std::string no_device_said;
 std::string device_named;
 
+// Whether the card has been given back. After that nothing looks for one again: a question asked
+// during teardown -- a row drawn as the tree comes apart -- would build a fresh instance on the
+// way out of the process and leave it standing with nothing left to destroy it.
+bool has_shut = false;
+
+// How many nets are loaded on a card. shut_down() refuses while any is up: the cache below holds
+// the pipelines they run through, and freeing it under them is a dangling read on the next extract.
+int nets_on_the_card = 0;
+
 #if NCNN_VULKAN
 // The cache every net points at, and the file it is kept in between runs. It is never freed: a
 // net holds a bare pointer to it, and freeing it while any graph is loaded is a dangling read.
@@ -47,11 +59,15 @@ const char *NO_DRIVER = "Govorilka: no Vulkan driver was found on this machine, 
                         "leave the device setting on the processor.";
 const char *NO_USABLE_DEVICE = "Govorilka: a Vulkan driver is installed and it offers no device "
                                "this library can use, so every graph runs on the processor.";
+const char *STILL_HOLDING = "Govorilka: the card was asked for back with {0} graph(s) still "
+                            "loaded on it, and it was kept. Give every model back before the "
+                            "library is taken down, or the layers of those graphs are left "
+                            "pointing into freed pipelines.";
 
 // The card looked for once, under the lock. It creates the library's instance and its one device,
 // both of which the library then caches; every net afterwards lands on that same device.
 void look_for_a_device() {
-    if (has_looked) {
+    if (has_looked || has_shut) {
         return;
     }
     has_looked = true;
@@ -103,17 +119,13 @@ String ncnn_device::name() {
     return String(device_named.c_str());
 }
 
-String ncnn_device::word_for(bool on_gpu) {
-    if (!on_gpu) {
-        return String(CPU_WORD);
-    }
-    const String named = name();
-    if (named.is_empty()) {
-        return String(GPU_WORD);
-    }
-    return String(GPU_WORD) + String(" ") + named;
-}
-
+// The pair the driver itself keeps, and nothing derived from it. Both numbers are read out of one
+// VK_EXT_memory_budget query over the same heap, so what a caller subtracts is what the driver
+// says this process may have against what it has taken -- rather than a budget put beside a raw
+// heap size, which is two different things and reads as gigabytes used by nobody.
+//
+// Without the extension there is no reading to report: the library's own answer is then a flat
+// 70 or 50 per cent of the heap, which never moves and says nothing about what is on the card.
 Dictionary ncnn_device::memory() {
     Dictionary answer;
 #if NCNN_VULKAN
@@ -125,30 +137,55 @@ Dictionary ncnn_device::memory() {
         }
     }
     const int index = ncnn::get_default_gpu_index();
-    ncnn::VulkanDevice *device = ncnn::get_gpu_device(index);
-    if (device == nullptr) {
+    const ncnn::GpuInfo &info = ncnn::get_gpu_info(index);
+    const bool can_be_read = info.support_VK_EXT_memory_budget()
+            && ncnn::vkGetPhysicalDeviceMemoryProperties2KHR != nullptr;
+    if (!can_be_read) {
         return answer;
     }
-    // The budget the driver reports is what an allocation is actually held to, and it is in
-    // megabytes. The total is the largest heap the card keeps to itself: the library picks its
-    // buffers out of one of those, and a host heap counted here would read as video memory.
-    const int64_t megabyte = 1024 * 1024;
-    answer["free_bytes"] = (int64_t)device->get_heap_budget() * megabyte;
-    const VkPhysicalDeviceMemoryProperties &properties =
-            ncnn::get_gpu_info(index).physicalDeviceMemoryProperties();
-    int64_t total = 0;
-    for (uint32_t heap = 0; heap < properties.memoryHeapCount; heap++) {
-        if ((properties.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
+
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budgets;
+    budgets.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+    budgets.pNext = nullptr;
+    VkPhysicalDeviceMemoryProperties2KHR properties;
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR;
+    properties.pNext = &budgets;
+    ncnn::vkGetPhysicalDeviceMemoryProperties2KHR(info.physicalDevice(), &properties);
+
+    // The largest heap the card keeps to itself, which is the one a graph's weights go into. A
+    // host heap counted here would read as video memory a game never had.
+    const VkPhysicalDeviceMemoryProperties &heaps = properties.memoryProperties;
+    int64_t budget = 0;
+    int64_t used = 0;
+    for (uint32_t heap = 0; heap < heaps.memoryHeapCount; heap++) {
+        if ((heaps.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
             continue;
         }
-        const int64_t size = (int64_t)properties.memoryHeaps[heap].size;
-        if (size > total) {
-            total = size;
+        if ((int64_t)budgets.heapBudget[heap] <= budget) {
+            continue;
         }
+        budget = (int64_t)budgets.heapBudget[heap];
+        used = (int64_t)budgets.heapUsage[heap];
     }
-    answer["total_bytes"] = total;
+    if (budget <= 0) {
+        return answer;
+    }
+    answer["total_bytes"] = budget;
+    answer["free_bytes"] = budget > used ? budget - used : (int64_t)0;
 #endif
     return answer;
+}
+
+void ncnn_device::net_opened() {
+    std::lock_guard<std::mutex> held(device_lock);
+    nets_on_the_card++;
+}
+
+void ncnn_device::net_closed() {
+    std::lock_guard<std::mutex> held(device_lock);
+    if (nets_on_the_card > 0) {
+        nets_on_the_card--;
+    }
 }
 
 #if NCNN_VULKAN
@@ -198,29 +235,51 @@ String ncnn_device::cache_path() {
 }
 
 void ncnn_device::Choice::ask_for(const String &word) {
-    wants_gpu = word.strip_edges().to_lower().begins_with(GPU_WORD);
+    wants_gpu.store(word.strip_edges().to_lower().begins_with(GPU_WORD));
 }
 
 String ncnn_device::Choice::asked() const {
-    return String(wants_gpu ? GPU_WORD : CPU_WORD);
+    return String(wants_gpu.load() ? GPU_WORD : CPU_WORD);
+}
+
+bool ncnn_device::Choice::wants_the_card() const {
+    return wants_gpu.load();
 }
 
 void ncnn_device::Choice::landed_on(bool p_on_gpu) {
-    on_gpu = p_on_gpu;
+    on_gpu.store(p_on_gpu);
 }
 
-String ncnn_device::Choice::landed() const {
-    return word_for(on_gpu);
+String ncnn_device::Choice::landed_word() const {
+    return String(on_gpu.load() ? GPU_WORD : CPU_WORD);
 }
 
+bool ncnn_device::Choice::is_on_the_card() const {
+    return on_gpu.load();
+}
 
+// Written beside the file and moved over it. save_cache() truncates what it is handed and then
+// writes, so a process that stopped part-way through -- and one holding a card is a process that
+// can -- would leave the next run with a file that reads as a miss for every shader in it.
 bool ncnn_device::save_cache() {
 #if NCNN_VULKAN
     std::lock_guard<std::mutex> held(device_lock);
     if (cache == nullptr || cache_file.empty()) {
         return false;
     }
-    return cache->save_cache(cache_file.c_str()) == 0;
+    const std::string beside = cache_file + ".writing";
+    if (cache->save_cache(beside.c_str()) != 0) {
+        std::remove(beside.c_str());
+        return false;
+    }
+    // Removed first because rename() over an existing file is an error on Windows. The window
+    // between the two is a run that compiles its shaders again, which is what a miss already is.
+    std::remove(cache_file.c_str());
+    if (std::rename(beside.c_str(), cache_file.c_str()) != 0) {
+        std::remove(beside.c_str());
+        return false;
+    }
+    return true;
 #else
     return false;
 #endif
@@ -229,17 +288,28 @@ bool ncnn_device::save_cache() {
 void ncnn_device::shut_down() {
 #if NCNN_VULKAN
     std::lock_guard<std::mutex> held(device_lock);
+    if (has_shut) {
+        return;
+    }
+    if (nets_on_the_card > 0) {
+        UtilityFunctions::push_error(
+                String(STILL_HOLDING).format(Array::make(nets_on_the_card)));
+        return;
+    }
     // The cache first: it holds shader modules and pipelines made on the device below, and a
     // device destroyed under them is what leaves the process hanging on the way out.
     if (cache != nullptr) {
         delete cache;
         cache = nullptr;
     }
-    if (has_device) {
+    // On has_looked and not on has_device: the instance exists the moment get_gpu_count() ran,
+    // whether or not a usable device came out of it, and one left standing is one nothing destroys.
+    if (has_looked) {
         ncnn::destroy_gpu_instance();
     }
-    // Looked for again if anything asks after this, which nothing in a shutdown does; leaving
-    // the flag set would answer "there is a card" over an instance that no longer exists.
+    // Latched rather than reset. Anything asking after this -- a row drawn as the tree comes
+    // apart -- would otherwise look again and build a fresh instance on the way out.
+    has_shut = true;
     has_looked = false;
     has_device = false;
     device_named.clear();
