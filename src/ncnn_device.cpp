@@ -353,14 +353,11 @@ bool ncnn_device::save_cache() {
 void ncnn_device::wake_up() {
 #if NCNN_VULKAN
     std::lock_guard<std::mutex> held(device_lock);
-    // The latch is this library's, not the process's: a host that takes the extension down and
-    // brings it up again would otherwise be answered "the card was given back" for the rest of
-    // the run, over a device nothing had ever looked for.
+    // The latch and the three answers behind it, and nothing else. The count of graphs on the
+    // card is a count of objects somebody still holds: zeroing it here would lose them.
     has_shut = false;
     has_looked = false;
     has_device = false;
-    nets_on_the_card = 0;
-    cache_bytes = 0;
     no_device_said.clear();
     device_named.clear();
 #endif
