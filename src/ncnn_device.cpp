@@ -11,6 +11,9 @@
 #include <pipelinecache.h>
 #endif
 
+#include <cstdio>
+#include <cstring>
+#include <vector>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -102,6 +105,74 @@ void look_for_a_device() {
 }
 
 #if NCNN_VULKAN
+// The extension that reports a card's PCI address, and the structure it answers in. Neither is in
+// the headers this library carries, and a property query only needs the device to support the
+// extension rather than to have it enabled, so both are spelled out here.
+const char *PCI_BUS_INFO_EXTENSION = "VK_EXT_pci_bus_info";
+const VkStructureType PCI_BUS_INFO_TYPE = (VkStructureType)1000212000;
+
+struct PciBusInfo {
+    VkStructureType sType;
+    void *pNext;
+    uint32_t pciDomain;
+    uint32_t pciBus;
+    uint32_t pciDevice;
+    uint32_t pciFunction;
+};
+
+// Whether this device reports one at all. A structure chained onto a query the driver does not
+// know is left untouched, which would read as domain zero bus zero -- a plausible address.
+bool carries_pci_bus_info(VkPhysicalDevice device) {
+    uint32_t count = 0;
+    if (ncnn::vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr) != VK_SUCCESS) {
+        return false;
+    }
+    std::vector<VkExtensionProperties> offered(count);
+    if (ncnn::vkEnumerateDeviceExtensionProperties(device, nullptr, &count, offered.data())
+            != VK_SUCCESS) {
+        return false;
+    }
+    for (const VkExtensionProperties &one : offered) {
+        if (strcmp(one.extensionName, PCI_BUS_INFO_EXTENSION) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The PCI address of a physical device, in the one spelling every library that reports one uses:
+// domain, bus, device and function, lower case, "0000:c1:00.0". It is the only identity two
+// libraries on one machine can both produce -- a name is shared by two cards of a model, and an
+// index is a position in an enumeration each of them walks for itself.
+//
+// Empty where the device does not carry VK_EXT_pci_bus_info, which is a machine where nothing can
+// be matched and every library falls back to ranking one for itself.
+std::string pci_address_of(int index) {
+    const ncnn::GpuInfo &info = ncnn::get_gpu_info(index);
+    if (ncnn::vkGetPhysicalDeviceProperties2KHR == nullptr) {
+        return std::string();
+    }
+    if (!carries_pci_bus_info(info.physicalDevice())) {
+        return std::string();
+    }
+    PciBusInfo bus;
+    memset(&bus, 0, sizeof(bus));
+    bus.sType = PCI_BUS_INFO_TYPE;
+    bus.pNext = nullptr;
+    VkPhysicalDeviceProperties2KHR properties;
+    memset(&properties, 0, sizeof(properties));
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
+    properties.pNext = &bus;
+    ncnn::vkGetPhysicalDeviceProperties2KHR(info.physicalDevice(), &properties);
+
+    char written[24];
+    snprintf(written, sizeof(written), "%04x:%02x:%02x.%x", bus.pciDomain, bus.pciBus,
+            bus.pciDevice, (unsigned int)(bus.pciFunction & 0x7));
+    return std::string(written);
+}
+#endif
+
+#if NCNN_VULKAN
 // The file read into a cache. The caller holds the file lock already, which is what keeps the
 // cache alive: shut_down() cannot free it without that lock. A file that will not read is a miss
 // and never a refusal, and the bytes it did carry say whether a later save has anything to write.
@@ -154,6 +225,22 @@ int ncnn_device::chosen_index() {
     return ncnn::get_default_gpu_index();
 #else
     return -1;
+#endif
+}
+
+// The PCI address of the card this library picked, or "" where there is none or the device does
+// not report one. It is what another library is matched against: two cards of one model share a
+// name, and an enumeration index is a position each library walks for itself.
+String ncnn_device::chosen_identity() {
+#if NCNN_VULKAN
+    std::lock_guard<std::mutex> held(device_lock);
+    look_for_a_device();
+    if (!has_device) {
+        return String();
+    }
+    return String(pci_address_of(ncnn::get_default_gpu_index()).c_str());
+#else
+    return String();
 #endif
 }
 

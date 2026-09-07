@@ -133,6 +133,11 @@ public:
     int chosen_card_index() const;
     String chosen_card_name() const;
 
+    // The PCI address of that card -- "0000:c1:00.0" -- or "" where the driver reports
+    // none. It is what another library in this process is matched against: a name is shared
+    // by two cards of a model, and an index is a position each library walks for itself.
+    String device_identity() const;
+
     // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for. It is
     // the build, the driver or the device, and it says which.

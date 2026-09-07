@@ -129,6 +129,10 @@ String NcnnASR::chosen_card_name() const {
     return ncnn_device::name();
 }
 
+String NcnnASR::device_identity() const {
+    return ncnn_device::chosen_identity();
+}
+
 Dictionary NcnnASR::device_memory() const {
     if (!loaded.load() || !device.is_on_the_card()) {
         return Dictionary();
@@ -365,6 +369,7 @@ void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("device_name"), &NcnnASR::device_name);
     ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnASR::chosen_card_index);
     ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnASR::chosen_card_name);
+    ClassDB::bind_method(D_METHOD("device_identity"), &NcnnASR::device_identity);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnASR::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnASR::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnASR::set_shader_cache);

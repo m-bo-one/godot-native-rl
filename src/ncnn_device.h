@@ -44,6 +44,11 @@ String unavailable_reason();
 // pointed at this very card rather than at whichever one it would have chosen itself.
 int chosen_index();
 
+// The PCI address of the card this library picked -- "0000:c1:00.0" -- or "" where there is none
+// or the driver does not report one. It is the identity another library in this process is matched
+// against, because a name is shared by two cards of a model and an index is each library's own.
+String chosen_identity();
+
 // The driver's own name for the device a graph lands on, or "" where there is none. It is the
 // raw name and never a word with the name behind it: the two halves of a row are joined on the
 // other side of the boundary, where the addon's own rule for that already lives.
