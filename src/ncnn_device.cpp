@@ -1,5 +1,6 @@
 #include "ncnn_device.h"
 
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
@@ -61,10 +62,13 @@ const char *NO_DRIVER = "Govorilka: no Vulkan driver was found on this machine, 
                         "leave the device setting on the processor.";
 const char *NO_USABLE_DEVICE = "Govorilka: a Vulkan driver is installed and it offers no device "
                                "this library can use, so every graph runs on the processor.";
-const char *STILL_HOLDING = "Govorilka: the card was asked for back with {0} graph(s) still "
-                            "loaded on it, and it was kept. Give every model back before the "
-                            "library is taken down, or the layers of those graphs are left "
-                            "pointing into freed pipelines.";
+const char *STILL_HOLDING = "Govorilka: the card was given back with {0} graph(s) still loaded on "
+                            "it, whose layers now point into freed pipelines. Give every model "
+                            "back before the library is taken down; this is the last moment "
+                            "anything can free the card, so it is freed anyway.";
+const char *GIVEN_BACK = "Govorilka: the card was given back as this library was taken down, so "
+                         "every graph from here on runs on the processor. Nothing asks for it "
+                         "again inside a process that has shut it.";
 
 // The card looked for once, under the lock. It creates the library's instance and its one device,
 // both of which the library then caches; every net afterwards lands on that same device.
@@ -297,10 +301,12 @@ void ncnn_device::shut_down() {
     if (has_shut) {
         return;
     }
+    // Said and not obeyed. This is the last hook there is -- the library's own static destructors
+    // run next and do this same teardown in the order that hangs the process -- so a graph still
+    // loaded is a warning to whoever wrote the host, never a reason to leave the card standing.
     if (nets_on_the_card > 0) {
         UtilityFunctions::push_error(
                 String(STILL_HOLDING).format(Array::make(nets_on_the_card)));
-        return;
     }
     // The cache first: it holds shader modules and pipelines made on the device below, and a
     // device destroyed under them is what leaves the process hanging on the way out.
@@ -318,6 +324,10 @@ void ncnn_device::shut_down() {
     has_shut = true;
     has_looked = false;
     has_device = false;
+    nets_on_the_card = 0;
     device_named.clear();
+    // The reason goes with the device. "There is no card" with nothing after it is a sentence a
+    // host would print blank, and after this there really is none.
+    no_device_said = GIVEN_BACK;
 #endif
 }
