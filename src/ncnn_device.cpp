@@ -74,13 +74,13 @@ std::mutex file_lock;
 // load that compiled nothing new leaves the count where it is, and nothing is written.
 size_t cache_bytes = 0;
 
-// The last pair the card answered, handed back where the lock is busy. A reading of nothing and a
-// machine with no card read alike to whoever draws the row, and a row that fell away mid-load
-// would say the card had gone.
+// The last pair the card answered, handed back where the lock is busy: a row that fell away
+// mid-load would otherwise say the card had gone.
 //
-// Published under a counter rather than as two numbers: a reader that caught one written and one
-// not would subtract them into a negative, which is the one answer a memory row must never show.
-// Odd while it is being written, even and equal on both sides of a read that saw a whole pair.
+// Published under a counter rather than as two numbers. A reader that caught one written and one
+// not would subtract them into a negative, which is the one answer a memory row must never show,
+// so a pair is only ever handed back whole: the counter is odd while it is being written and even
+// and equal on both sides of a read that saw one.
 std::atomic<bool> has_a_reading{false};
 std::atomic<uint32_t> reading_stamp{0};
 std::atomic<int64_t> last_free{0};
@@ -94,9 +94,10 @@ void publish_reading(int64_t free_bytes, int64_t total_bytes) {
     has_a_reading.store(true, std::memory_order_release);
 }
 
-// The last pair, and false only where none was ever taken. Four tries at catching the counter even
-// on both sides; a reader that loses all four takes the two numbers as they stand, which is two
-// readings a moment apart rather than nothing -- nothing reads as a machine with no card at all.
+// The last whole pair, or false where none was ever taken or four tries all lost the counter.
+// False rather than the two numbers as they stand: a free from one reading beside a total from
+// another is the very pair the counter exists to prevent, and a row is better absent than wrong.
+// Losing four is a reader on a machine writing this far oftener than anything reads it.
 bool last_reading(int64_t &free_bytes, int64_t &total_bytes) {
     if (!has_a_reading.load(std::memory_order_acquire)) {
         return false;
@@ -113,9 +114,7 @@ bool last_reading(int64_t &free_bytes, int64_t &total_bytes) {
             return true;
         }
     }
-    free_bytes = last_free.load(std::memory_order_relaxed);
-    total_bytes = last_total.load(std::memory_order_relaxed);
-    return true;
+    return false;
 }
 
 const char *NO_VULKAN_BUILD = "Govorilka: this build of the runner carries no Vulkan backend, so "
@@ -567,6 +566,7 @@ void ncnn_device::wake_up() {
     has_looked = false;
     has_device = false;
     device_index = -1;
+    has_a_reading.store(false, std::memory_order_release);
     no_device_said.clear();
     device_named.clear();
 #endif
