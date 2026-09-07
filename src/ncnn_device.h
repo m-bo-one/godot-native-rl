@@ -70,6 +70,12 @@ String cache_path();
 // file did not carry, so this is called after one; it costs nothing when the path is empty.
 bool save_cache();
 
+// The latch and everything behind it put back as it was before anything looked for a card. It is
+// called from the extension's own initialiser: the latch belongs to this library rather than to
+// the process, and a host that takes the extension down and brings it up again would otherwise be
+// answered "the card was given back" for the rest of the run.
+void wake_up();
+
 // The compiled shaders and the device given back, in that order, while the library is still
 // loaded. It is called from the extension's own terminator: left to the library's static
 // destructors the device is torn down with the cache's pipelines still alive on it, and the

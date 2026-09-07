@@ -44,6 +44,10 @@ void initialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     }
 
     pin_openmp_runtime();
+    // The card put back where it was before anything looked for one. The terminator latches the
+    // device shut, and that latch belongs to this library rather than to the process: brought up
+    // a second time without this, every graph would be told the card had been given back.
+    ncnn_device::wake_up();
     // Before any class of this extension exists, so that a fault in one of them has somewhere
     // to be reported from. Without it a fault inside a worker thread ends the process with no
     // line in the log and no line on the terminal, which is how the defect this was written
