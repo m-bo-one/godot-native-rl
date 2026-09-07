@@ -55,6 +55,14 @@ ncnn::PipelineCache *cache = nullptr;
 #endif
 std::string cache_file;
 
+// The one lock over reading and writing that file, held for the megabytes and never for anything
+// else. The device's lock is never held while this one is taken, so the two cannot deadlock.
+std::mutex file_lock;
+
+// How many bytes of shaders that file already carries, as this process last read or wrote it. A
+// load that compiled nothing new leaves the count where it is, and nothing is written.
+size_t cache_bytes = 0;
+
 const char *NO_VULKAN_BUILD = "Govorilka: this build of the runner carries no Vulkan backend, so "
                               "every graph runs on the processor.";
 const char *NO_DRIVER = "Govorilka: no Vulkan driver was found on this machine, so every graph "
@@ -93,6 +101,22 @@ void look_for_a_device() {
     no_device_said = NO_VULKAN_BUILD;
 #endif
 }
+
+#if NCNN_VULKAN
+// The file read into a cache, with the device's own lock given back. A file that will not read is
+// a miss and never a refusal: every shader it does not carry is compiled as it always was, and the
+// bytes it did carry are what says whether a later save has anything new to write.
+void read_the_cache(ncnn::PipelineCache *into, const std::string &named) {
+    std::lock_guard<std::mutex> reading(file_lock);
+    if (into->load_cache(named.c_str()) != 0) {
+        cache_bytes = 0;
+        return;
+    }
+    std::error_code unread;
+    const uintmax_t weighs = std::filesystem::file_size(std::filesystem::u8path(named), unread);
+    cache_bytes = unread ? 0 : (size_t)weighs;
+}
+#endif
 
 } // namespace
 
@@ -196,20 +220,28 @@ void ncnn_device::net_closed() {
 
 #if NCNN_VULKAN
 ncnn::PipelineCache *ncnn_device::shared_cache() {
-    std::lock_guard<std::mutex> held(device_lock);
-    look_for_a_device();
-    if (!has_device) {
-        return nullptr;
-    }
-    if (cache == nullptr) {
-        cache = new ncnn::PipelineCache(ncnn::get_gpu_device(ncnn::get_default_gpu_index()));
-        if (!cache_file.empty()) {
-            // A file that will not read is a miss and never a refusal: the cache is an
-            // optimisation, and every shader it does not carry is compiled as it always was.
-            cache->load_cache(cache_file.c_str());
+    ncnn::PipelineCache *made = nullptr;
+    std::string wanted;
+    bool is_fresh = false;
+    {
+        std::lock_guard<std::mutex> held(device_lock);
+        look_for_a_device();
+        if (!has_device) {
+            return nullptr;
         }
+        if (cache == nullptr) {
+            cache = new ncnn::PipelineCache(ncnn::get_gpu_device(ncnn::get_default_gpu_index()));
+            is_fresh = !cache_file.empty();
+            wanted = cache_file;
+        }
+        made = cache;
     }
-    return cache;
+    // The file is read with the device's own lock given back: it is megabytes off a disk, and a
+    // host drawing a memory row on the main thread asks that lock for the card's free bytes.
+    if (is_fresh) {
+        read_the_cache(made, wanted);
+    }
+    return made;
 }
 #else
 ncnn::PipelineCache *ncnn_device::shared_cache() {
@@ -219,16 +251,21 @@ ncnn::PipelineCache *ncnn_device::shared_cache() {
 
 void ncnn_device::set_cache_path(const String &path) {
 #if NCNN_VULKAN
-    std::lock_guard<std::mutex> held(device_lock);
-    const std::string wanted = path.utf8().get_data();
-    if (cache_file == wanted) {
-        return;
+    ncnn::PipelineCache *made = nullptr;
+    std::string wanted;
+    {
+        std::lock_guard<std::mutex> held(device_lock);
+        wanted = path.utf8().get_data();
+        if (cache_file == wanted) {
+            return;
+        }
+        cache_file = wanted;
+        made = cache;
     }
-    cache_file = wanted;
     // A cache already built reads the new file at once rather than at the next load: the caller
     // names the file before the first graph, and one named after it would otherwise never be read.
-    if (cache != nullptr && !cache_file.empty()) {
-        cache->load_cache(cache_file.c_str());
+    if (made != nullptr && !wanted.empty()) {
+        read_the_cache(made, wanted);
     }
 #else
     (void)path;
@@ -264,31 +301,36 @@ bool ncnn_device::Choice::is_on_the_card() const {
     return on_gpu.load();
 }
 
-// Written beside the file and moved over it in one step. save_cache() truncates what it is handed
-// and then writes, so a process that stopped part-way through would leave the next run a file that
-// reads as a miss for every shader in it; the sibling carries this process's own number, because
-// two games saving at once under one name would each remove the other's half-written file.
+// Written only where this process has more shaders than the file already carries. The library
+// writes it atomically itself -- a sibling of its own, then a replacing move -- so nothing here
+// touches the file; what is saved here is the megabytes of writing a load that compiled nothing
+// new would otherwise repeat.
 bool ncnn_device::save_cache() {
 #if NCNN_VULKAN
-    std::lock_guard<std::mutex> held(device_lock);
-    if (cache == nullptr || cache_file.empty()) {
+    ncnn::PipelineCache *kept = nullptr;
+    std::string wanted;
+    {
+        std::lock_guard<std::mutex> held(device_lock);
+        kept = cache;
+        wanted = cache_file;
+    }
+    if (kept == nullptr || wanted.empty()) {
         return false;
     }
-    const std::string beside = cache_file + ".writing."
-            + std::to_string(OS::get_singleton()->get_process_id());
-    if (cache->save_cache(beside.c_str()) != 0) {
-        std::remove(beside.c_str());
+    // The device's own lock is given back before any of this: serialising is megabytes and the
+    // write is a disk, and a host drawing a memory row on the main thread waits on that lock.
+    std::lock_guard<std::mutex> writing(file_lock);
+    std::vector<unsigned char> held_now;
+    if (kept->save_cache(held_now) != 0) {
         return false;
     }
-    // One move that replaces what is there, rather than a remove and a rename: between those two
-    // a reader finds no file at all, and on Windows a rename onto an existing name simply fails.
-    std::error_code failed;
-    std::filesystem::rename(std::filesystem::u8path(beside),
-            std::filesystem::u8path(cache_file), failed);
-    if (failed) {
-        std::remove(beside.c_str());
+    if (held_now.size() <= cache_bytes) {
         return false;
     }
+    if (kept->save_cache(wanted.c_str()) != 0) {
+        return false;
+    }
+    cache_bytes = held_now.size();
     return true;
 #else
     return false;
@@ -297,6 +339,9 @@ bool ncnn_device::save_cache() {
 
 void ncnn_device::shut_down() {
 #if NCNN_VULKAN
+    // Taken before the device's, and in that order everywhere: a save in flight holds this one
+    // and the cache it is serialising may not be freed under it.
+    std::lock_guard<std::mutex> writing(file_lock);
     std::lock_guard<std::mutex> held(device_lock);
     if (has_shut) {
         return;
@@ -325,6 +370,7 @@ void ncnn_device::shut_down() {
     has_looked = false;
     has_device = false;
     nets_on_the_card = 0;
+    cache_bytes = 0;
     device_named.clear();
     // The reason goes with the device. "There is no card" with nothing after it is a sentence a
     // host would print blank, and after this there really is none.
