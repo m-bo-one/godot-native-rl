@@ -130,18 +130,37 @@ for _include in ncnn_include_paths:
         break
 
 if _ncnn_vulkan:
-    # Everything the install left beside ncnn.lib: glslang's archives are named differently from
-    # one of its versions to the next -- MachineIndependent and GenericCodeGen are folded into
-    # glslang in some -- so they are taken as they are found rather than spelled out here.
+    # glslang's archives in dependency order, dependents first: GNU ld reads an archive once and
+    # takes only what is undefined at that point, so SPIRV after glslang leaves every
+    # GlslangToSpv reference unresolved. Alphabetical order is what a listing gives and it is
+    # wrong. Names that a given glslang folds into another are simply not there and are skipped;
+    # anything else the install left is appended after, where its order cannot matter.
+    _glslang_order = [
+        "SPIRV", "glslang-default-resource-limits", "glslang",
+        "MachineIndependent", "GenericCodeGen", "OSDependent",
+    ]
+    # The two the linker cannot do without. A guard that only asked for "some archive" passes on
+    # an install that has ncnn's own leftovers in it and nothing of the shader compiler.
+    _glslang_needed = ["SPIRV", "glslang"]
     _suffix = ".lib" if env["platform"] == "windows" else ".a"
-    _beside = sorted(name for name in os.listdir(_ncnn_lib_dir)
-                     if name.endswith(_suffix) and os.path.join(_ncnn_lib_dir, name) != ncnn_static_lib)
-    if not _beside:
-        print("Error: ncnn at {} is built with Vulkan and there is no glslang beside it in {}.".format(
-            ncnn_static_lib, _ncnn_lib_dir))
+    _prefix = "" if env["platform"] == "windows" else "lib"
+
+    def _archive_named(stem):
+        path = os.path.join(_ncnn_lib_dir, _prefix + stem + _suffix)
+        return path if os.path.isfile(path) else None
+
+    _missing = [stem for stem in _glslang_needed if _archive_named(stem) is None]
+    if _missing:
+        print("Error: ncnn at {} is built with Vulkan and {} is not beside it in {}.".format(
+            ncnn_static_lib, " and ".join(_missing), _ncnn_lib_dir))
         print("Fetch ncnn's own submodules (`git submodule update --init` inside thirdparty/ncnn)")
         print("and build ncnn again -- see docs/dev/building.md.")
         Exit(1)
+
+    _beside = [_prefix + stem + _suffix for stem in _glslang_order if _archive_named(stem)]
+    _beside += sorted(name for name in os.listdir(_ncnn_lib_dir)
+                      if name.endswith(_suffix) and name not in _beside
+                      and os.path.join(_ncnn_lib_dir, name) != ncnn_static_lib)
     env.Append(LIBS=[File(os.path.join(_ncnn_lib_dir, name)) for name in _beside])
     print("ncnn is built with Vulkan; linking {} beside it".format(", ".join(_beside)))
 
