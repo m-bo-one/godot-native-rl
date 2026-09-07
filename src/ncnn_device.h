@@ -80,11 +80,9 @@ String cache_path();
 // file did not carry, so this is called after one; it costs nothing when the path is empty.
 bool save_cache();
 
-// The latch and the three answers behind it put back as they were before anything looked for a
-// card, from the extension's own initialiser. It matters only to a host that declares this library
-// reloadable and takes it down and up inside one process, which is a road nothing here measures
-// and which the descriptor does not ask for; it is at that host's own risk. Nothing else is
-// touched: the count of graphs on the card counts objects somebody may still be holding.
+// The latch and the three answers behind it put back, from the extension's own initialiser. It
+// matters only to a host that declares this library reloadable and cycles it inside one process,
+// which the descriptor does not ask for and nothing here measures: at that host's own risk.
 void wake_up();
 
 // The compiled shaders and the device given back, in that order, while the library is still

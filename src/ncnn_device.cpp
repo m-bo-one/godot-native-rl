@@ -447,10 +447,9 @@ bool ncnn_device::save_cache() {
     if (kept == nullptr || wanted.empty()) {
         return false;
     }
-    // Serialised twice on the road that writes, and once on the road that does not. The size is
-    // the only signal the library offers for "anything new compiled", and writing those same
-    // bytes here rather than handing the path over would put back an atomic write of our own --
-    // without the library's WRITE_THROUGH, and leaking its sibling when a process is killed.
+    // Serialised twice on the road that writes: the size is the only signal the library offers
+    // for "anything new compiled", and writing those bytes here rather than handing the path
+    // over would put an atomic write of our own back over the library's.
     std::vector<unsigned char> held_now;
     if (kept->save_cache(held_now) != 0) {
         return false;
