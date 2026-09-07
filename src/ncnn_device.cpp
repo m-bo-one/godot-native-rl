@@ -225,3 +225,23 @@ bool ncnn_device::save_cache() {
     return false;
 #endif
 }
+
+void ncnn_device::shut_down() {
+#if NCNN_VULKAN
+    std::lock_guard<std::mutex> held(device_lock);
+    // The cache first: it holds shader modules and pipelines made on the device below, and a
+    // device destroyed under them is what leaves the process hanging on the way out.
+    if (cache != nullptr) {
+        delete cache;
+        cache = nullptr;
+    }
+    if (has_device) {
+        ncnn::destroy_gpu_instance();
+    }
+    // Looked for again if anything asks after this, which nothing in a shutdown does; leaving
+    // the flag set would answer "there is a card" over an instance that no longer exists.
+    has_looked = false;
+    has_device = false;
+    device_named.clear();
+#endif
+}

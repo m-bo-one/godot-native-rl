@@ -64,6 +64,13 @@ String cache_path();
 // file did not carry, so this is called after one; it costs nothing when the path is empty.
 bool save_cache();
 
+// The compiled shaders and the device given back, in that order, while the library is still
+// loaded. It is called from the extension's own terminator: left to the library's static
+// destructors the device is torn down with the cache's pipelines still alive on it, and the
+// process stops answering on the way out instead of exiting. Idempotent, and a no-op where no
+// device was ever asked for.
+void shut_down();
+
 // The device a family asked for and the one its graphs got, which is the whole of what a class on
 // these graphs has to carry. Every family holds one of these and binds the same four methods over
 // it, so a host reads the same answer from the recogniser, the picture model and the runner.

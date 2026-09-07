@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "gigaam_asr.h"
+#include "ncnn_device.h"
 #include "ncnn_asr.h"
 #include "ncnn_report.h"
 #include "ncnn_runner.h"
@@ -69,6 +70,11 @@ void uninitialize_ncnn_runner_module(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+    // The compiled shaders and the card given back here, while the library is still loaded and
+    // every class of it has already been freed. Left to the library's own static destructors the
+    // device is torn down with the shared cache's pipelines still alive on it, and the process
+    // stops answering on the way out rather than exiting.
+    ncnn_device::shut_down();
 }
 
 extern "C" {

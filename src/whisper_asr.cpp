@@ -205,7 +205,13 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
             return false;
         }
         const String bin_name = param_name.trim_suffix(".param") + ".bin";
-        part.graph->prepare(num_threads, true, part.may_use_the_card && device.wants_gpu);
+        // A graph that goes onto the card keeps its blobs single precision. The encoder's
+        // residual stream grows with the model's width, and the square of it overflows half
+        // precision inside a normalisation's variance -- on the card that happens in the shader,
+        // before the sum is promoted -- which comes back as an empty transcription rather than as
+        // an error. Measured: whisper_base heard nothing at all under half-precision storage.
+        const bool on_the_card = part.may_use_the_card && device.wants_gpu;
+        part.graph->prepare(num_threads, !on_the_card, on_the_card);
         if (!part.graph->read(folder.path_join(param_name), folder.path_join(bin_name))) {
             return false;
         }
