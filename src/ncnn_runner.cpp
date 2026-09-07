@@ -55,6 +55,7 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnRunner::chosen_card_index);
     ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnRunner::chosen_card_name);
     ClassDB::bind_method(D_METHOD("device_identity"), &NcnnRunner::device_identity);
+    ClassDB::bind_method(D_METHOD("set_device_address", "address"), &NcnnRunner::set_device_address);
     ClassDB::bind_method(D_METHOD("has_looked_for_a_card"), &NcnnRunner::has_looked_for_a_card);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnRunner::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
@@ -204,6 +205,12 @@ String NcnnRunner::chosen_card_name() const {
 
 String NcnnRunner::device_identity() const {
     return ncnn_device::chosen_identity();
+}
+
+// The card a host wants, handed on to the one place that knows about devices. Set before the
+// load, because the look for a card happens once and every answer afterwards reads its choice.
+void NcnnRunner::set_device_address(const String &p_address) {
+    ncnn_device::set_device_address(p_address);
 }
 
 bool NcnnRunner::has_looked_for_a_card() const {

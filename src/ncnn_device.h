@@ -48,6 +48,11 @@ int chosen_index();
 // instance, so this is what says whether a load that should have touched no device touched one.
 bool has_looked_for_a_card();
 
+// The card a host wants, by the PCI address its drivers report -- "0000:c1:00.0" -- or an empty
+// word to rank one here. Set before the first load: the look for a card happens once per process,
+// and an address that names no device on this machine is said once and the ranked card taken.
+void set_device_address(const String &address);
+
 // The PCI address of the card this library picked -- "0000:c1:00.0" -- or "" where there is none
 // or the driver does not report one. It is the identity another library in this process is matched
 // against, because a name is shared by two cards of a model and an index is each library's own.

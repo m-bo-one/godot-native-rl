@@ -241,6 +241,11 @@ public:
     // by two cards of a model, and an index is a position each library walks for itself.
     String device_identity() const;
 
+    // The card a host wants, by that same address, or an empty word to rank one here. It is
+    // process-wide and it is read once: whichever holder loads first names the card for every
+    // graph in this library, exactly as it names the shader file for them.
+    void set_device_address(const String &p_address);
+
     // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for. It is
     // the build, the driver or the device, and it says which.

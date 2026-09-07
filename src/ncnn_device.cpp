@@ -47,6 +47,14 @@ std::string device_named;
 // way out of the process and leave it standing with nothing left to destroy it.
 bool has_shut = false;
 
+// The address a host named, canonical and lower case, or empty to let this library rank one. Read
+// by the one look for a card, so a word set after that look is a word about a choice already made.
+std::string wanted_address;
+
+// Which device the look settled on, as a position in the loader's enumeration. Every answer below
+// reads this rather than the library's ranking: a named address that matched is not that ranking.
+int device_index = -1;
+
 // How many nets are loaded on a card. shut_down() refuses while any is up: the cache below holds
 // the pipelines they run through, and freeing it under them is a dangling read on the next extract.
 int nets_on_the_card = 0;
@@ -117,6 +125,9 @@ const char *NO_DRIVER = "Govorilka: no Vulkan driver was found on this machine, 
                         "leave the device setting on the processor.";
 const char *NO_USABLE_DEVICE = "Govorilka: a Vulkan driver is installed and it offers no device "
                                "this library can use, so every graph runs on the processor.";
+const char *NO_SUCH_CARD = "Govorilka: no device on this machine reports the PCI address that was "
+                           "named, so the graphs went to the card this library ranks first. A "
+                           "model told that address in another library is then on a second card: ";
 const char *STILL_HOLDING = "Govorilka: the card was given back with {0} graph(s) still loaded on "
                             "it, whose layers now point into freed pipelines. Give every model "
                             "back before the library is taken down; this is the last moment "
@@ -124,30 +135,6 @@ const char *STILL_HOLDING = "Govorilka: the card was given back with {0} graph(s
 const char *GIVEN_BACK = "Govorilka: the card was given back as this library was taken down, so "
                          "every graph from here on runs on the processor. Nothing asks for it "
                          "again inside a process that has shut it.";
-
-// The card looked for once, under the lock. It creates the library's instance and its one device,
-// both of which the library then caches; every net afterwards lands on that same device.
-void look_for_a_device() {
-    if (has_looked || has_shut) {
-        return;
-    }
-    has_looked = true;
-#if NCNN_VULKAN
-    if (ncnn::get_gpu_count() <= 0) {
-        no_device_said = NO_DRIVER;
-        return;
-    }
-    ncnn::VulkanDevice *device = ncnn::get_gpu_device(ncnn::get_default_gpu_index());
-    if (device == nullptr || !device->is_valid()) {
-        no_device_said = NO_USABLE_DEVICE;
-        return;
-    }
-    has_device = true;
-    device_named = device->info.device_name();
-#else
-    no_device_said = NO_VULKAN_BUILD;
-#endif
-}
 
 #if NCNN_VULKAN
 // The extension that reports a card's PCI address, and the structure it answers in. Neither is in
@@ -215,7 +202,50 @@ std::string pci_address_of(int index) {
             bus.pciDevice, (unsigned int)(bus.pciFunction & 0x7));
     return std::string(written);
 }
+
+// Which device the card the host named is, or the one this library ranks -- the first discrete
+// device, else the first integrated one -- where none was named, none carries an address, or the
+// one named is on another machine's bus. A named address that matched nothing is said once, which
+// is all it can be said: the look happens once per process and every later answer reads its index.
+int index_for_the_address() {
+    const int ranked = ncnn::get_default_gpu_index();
+    if (wanted_address.empty()) {
+        return ranked;
+    }
+    for (int index = 0; index < ncnn::get_gpu_count(); index++) {
+        if (pci_address_of(index) == wanted_address) {
+            return index;
+        }
+    }
+    UtilityFunctions::push_warning(String(NO_SUCH_CARD) + String(wanted_address.c_str()));
+    return ranked;
+}
 #endif
+
+// The card looked for once, under the lock. It creates the library's instance and its one device,
+// both of which the library then caches; every net afterwards lands on that same device.
+void look_for_a_device() {
+    if (has_looked || has_shut) {
+        return;
+    }
+    has_looked = true;
+#if NCNN_VULKAN
+    if (ncnn::get_gpu_count() <= 0) {
+        no_device_said = NO_DRIVER;
+        return;
+    }
+    device_index = index_for_the_address();
+    ncnn::VulkanDevice *device = ncnn::get_gpu_device(device_index);
+    if (device == nullptr || !device->is_valid()) {
+        no_device_said = NO_USABLE_DEVICE;
+        return;
+    }
+    has_device = true;
+    device_named = device->info.device_name();
+#else
+    no_device_said = NO_VULKAN_BUILD;
+#endif
+}
 
 #if NCNN_VULKAN
 // The file read into a cache. The caller holds the file lock already, which is what keeps the
@@ -267,7 +297,7 @@ int ncnn_device::chosen_index() {
     if (!has_device) {
         return -1;
     }
-    return ncnn::get_default_gpu_index();
+    return device_index;
 #else
     return -1;
 #endif
@@ -280,6 +310,17 @@ bool ncnn_device::has_looked_for_a_card() {
     return has_looked;
 }
 
+// The card a host wants, by the address its drivers report, taken as it is written: the caller
+// canonicalises it. Set before the first load, because the look for a card happens once and every
+// answer afterwards reads what that look settled on; an empty word ranks one here.
+void ncnn_device::set_device_address(const String &address) {
+    std::lock_guard<std::mutex> held(device_lock);
+    if (has_looked) {
+        return;
+    }
+    wanted_address = std::string(address.utf8().get_data());
+}
+
 // The PCI address of the card this library picked, or "" where there is none or the device does
 // not report one. It is what another library is matched against: two cards of one model share a
 // name, and an enumeration index is a position each library walks for itself.
@@ -290,7 +331,7 @@ String ncnn_device::chosen_identity() {
     if (!has_device) {
         return String();
     }
-    return String(pci_address_of(ncnn::get_default_gpu_index()).c_str());
+    return String(pci_address_of(device_index).c_str());
 #else
     return String();
 #endif
@@ -333,7 +374,7 @@ Dictionary ncnn_device::memory() {
     if (!has_device) {
         return answer;
     }
-    const int index = ncnn::get_default_gpu_index();
+    const int index = device_index;
     const ncnn::GpuInfo &info = ncnn::get_gpu_info(index);
     const bool can_be_read = info.support_VK_EXT_memory_budget()
             && ncnn::vkGetPhysicalDeviceMemoryProperties2KHR != nullptr;
@@ -404,7 +445,7 @@ ncnn::PipelineCache *ncnn_device::shared_cache() {
             return nullptr;
         }
         if (cache == nullptr) {
-            cache = new ncnn::PipelineCache(ncnn::get_gpu_device(ncnn::get_default_gpu_index()));
+            cache = new ncnn::PipelineCache(ncnn::get_gpu_device(device_index));
             is_fresh = !cache_file.empty();
             wanted = cache_file;
         }
@@ -525,6 +566,7 @@ void ncnn_device::wake_up() {
     has_shut = false;
     has_looked = false;
     has_device = false;
+    device_index = -1;
     no_device_said.clear();
     device_named.clear();
 #endif

@@ -86,6 +86,11 @@ public:
     // by two cards of a model, and an index is a position each library walks for itself.
     String device_identity() const;
 
+    // The card a host wants, by that same address, or an empty word to rank one here. It is
+    // process-wide and it is read once: whichever holder loads first names the card for every
+    // graph in this library, exactly as it names the shader file for them.
+    void set_device_address(const String &p_address);
+
     // Whether anything in this process has asked for a card yet. A check holds the rule
     // that a load onto the processor brings no device up against this and nothing else.
     bool has_looked_for_a_card() const;
