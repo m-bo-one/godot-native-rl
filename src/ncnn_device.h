@@ -44,6 +44,10 @@ String unavailable_reason();
 // pointed at this very card rather than at whichever one it would have chosen itself.
 int chosen_index();
 
+// Whether anything has asked for a card in this process yet. Looking is what builds the Vulkan
+// instance, so this is what says whether a load that should have touched no device touched one.
+bool has_looked_for_a_card();
+
 // The PCI address of the card this library picked -- "0000:c1:00.0" -- or "" where there is none
 // or the driver does not report one. It is the identity another library in this process is matched
 // against, because a name is shared by two cards of a model and an index is each library's own.

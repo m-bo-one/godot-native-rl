@@ -55,6 +55,7 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnRunner::chosen_card_index);
     ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnRunner::chosen_card_name);
     ClassDB::bind_method(D_METHOD("device_identity"), &NcnnRunner::device_identity);
+    ClassDB::bind_method(D_METHOD("has_looked_for_a_card"), &NcnnRunner::has_looked_for_a_card);
     ClassDB::bind_method(D_METHOD("device_problem"), &NcnnRunner::device_problem);
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnRunner::set_shader_cache);
@@ -203,6 +204,10 @@ String NcnnRunner::chosen_card_name() const {
 
 String NcnnRunner::device_identity() const {
     return ncnn_device::chosen_identity();
+}
+
+bool NcnnRunner::has_looked_for_a_card() const {
+    return ncnn_device::has_looked_for_a_card();
 }
 
 String NcnnRunner::device_problem() const {

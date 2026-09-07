@@ -86,6 +86,10 @@ public:
     // by two cards of a model, and an index is a position each library walks for itself.
     String device_identity() const;
 
+    // Whether anything in this process has asked for a card yet. A check holds the rule
+    // that a load onto the processor brings no device up against this and nothing else.
+    bool has_looked_for_a_card() const;
+
     // Why the card was asked for and the processor got the graph, as one sentence, or "" where
     // nothing went wrong: the request was met, or the processor was what was asked for.
     String device_problem() const;
