@@ -11,6 +11,7 @@
 #include <pipelinecache.h>
 #endif
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -68,8 +69,39 @@ size_t cache_bytes = 0;
 // The last pair the card answered, handed back where the lock is busy. A reading of nothing and a
 // machine with no card read alike to whoever draws the row, and a row that fell away mid-load
 // would say the card had gone.
+//
+// Published under a counter rather than as two numbers: a reader that caught one written and one
+// not would subtract them into a negative, which is the one answer a memory row must never show.
+// Odd while it is being written, even and equal on both sides of a read that saw a whole pair.
+std::atomic<uint32_t> reading_stamp{0};
 int64_t last_free = 0;
 int64_t last_total = 0;
+
+void publish_reading(int64_t free_bytes, int64_t total_bytes) {
+    reading_stamp.fetch_add(1, std::memory_order_acq_rel);
+    last_free = free_bytes;
+    last_total = total_bytes;
+    reading_stamp.fetch_add(1, std::memory_order_release);
+}
+
+// The last whole pair, or false where none was ever taken or a writer kept getting in the way.
+// Four tries and no lock: a reader that cannot win in four is a reader on a machine writing this
+// far more often than anything reads it, which nothing here does.
+bool last_reading(int64_t &free_bytes, int64_t &total_bytes) {
+    for (int tries = 0; tries < 4; tries++) {
+        const uint32_t before = reading_stamp.load(std::memory_order_acquire);
+        if ((before & 1u) != 0) {
+            continue;
+        }
+        free_bytes = last_free;
+        total_bytes = last_total;
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (reading_stamp.load(std::memory_order_acquire) == before) {
+            return total_bytes > 0;
+        }
+    }
+    return false;
+}
 
 const char *NO_VULKAN_BUILD = "Govorilka: this build of the runner carries no Vulkan backend, so "
                               "every graph runs on the processor.";
@@ -273,10 +305,13 @@ Dictionary ncnn_device::memory() {
     if (!held.owns_lock()) {
         // The reading this process last took rather than nothing at all: nothing reads as a
         // machine with no card, and a row that fell away while a load held the lock would say
-        // the card had gone. A pair a moment old is the honest answer to "not just now".
-        if (last_total > 0) {
-            answer["total_bytes"] = last_total;
-            answer["free_bytes"] = last_free;
+        // the card had gone. It is marked stale, so a host can say which it is showing.
+        int64_t free_bytes = 0;
+        int64_t total_bytes = 0;
+        if (last_reading(free_bytes, total_bytes)) {
+            answer["total_bytes"] = total_bytes;
+            answer["free_bytes"] = free_bytes;
+            answer["stale"] = true;
         }
         return answer;
     }
@@ -318,10 +353,11 @@ Dictionary ncnn_device::memory() {
     if (budget <= 0) {
         return answer;
     }
-    last_total = budget;
-    last_free = budget > used ? budget - used : (int64_t)0;
-    answer["total_bytes"] = last_total;
-    answer["free_bytes"] = last_free;
+    const int64_t free_now = budget > used ? budget - used : (int64_t)0;
+    publish_reading(free_now, budget);
+    answer["total_bytes"] = budget;
+    answer["free_bytes"] = free_now;
+    answer["stale"] = false;
 #endif
     return answer;
 }
@@ -514,8 +550,7 @@ void ncnn_device::shut_down() {
     has_device = false;
     nets_on_the_card = 0;
     cache_bytes = 0;
-    last_free = 0;
-    last_total = 0;
+    publish_reading(0, 0);
     device_named.clear();
     // The reason goes with the device. "There is no card" with nothing after it is a sentence a
     // host would print blank, and after this there really is none.
