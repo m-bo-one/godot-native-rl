@@ -48,8 +48,8 @@ bool has_shut = false;
 int nets_on_the_card = 0;
 
 #if NCNN_VULKAN
-// The cache every net points at, and the file it is kept in between runs. It is never freed: a
-// net holds a bare pointer to it, and freeing it while any graph is loaded is a dangling read.
+// The cache every net points at, and the file it is kept in between runs. Freed in one place
+// only, shut_down(), and never while a graph is loaded: a net holds a bare pointer to it.
 ncnn::PipelineCache *cache = nullptr;
 #endif
 std::string cache_file;
@@ -330,9 +330,10 @@ bool ncnn_device::save_cache() {
     if (kept == nullptr || wanted.empty()) {
         return false;
     }
-    // The device's own lock is given back before any of this: serialising is megabytes and the
-    // write is a disk, and a host drawing a memory row on the main thread waits on that lock.
-    std::lock_guard<std::mutex> writing(file_lock);
+    // Serialised twice on the road that writes, and once on the road that does not. The size is
+    // the only signal the library offers for "anything new compiled", and writing those same
+    // bytes here rather than handing the path over would put back an atomic write of our own --
+    // without the library's WRITE_THROUGH, and leaking its sibling when a process is killed.
     std::vector<unsigned char> held_now;
     if (kept->save_cache(held_now) != 0) {
         return false;

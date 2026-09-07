@@ -57,7 +57,7 @@ void net_closed();
 
 // The pipeline cache every net shares, or null where there is no device. Without it each net
 // builds its own and compiles every shader again, which is seconds per graph rather than
-// milliseconds. Never freed: it outlives the nets that point at it, by design.
+// milliseconds. Freed by shut_down() alone, and only once no net points at it.
 ncnn::PipelineCache *shared_cache();
 
 // Where the compiled shaders are kept between runs, as a path the C library can open -- the
