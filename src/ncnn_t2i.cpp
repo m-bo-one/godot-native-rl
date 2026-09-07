@@ -192,7 +192,46 @@ bool NcnnT2I::load(const String &model_dir, int num_threads) {
     loaded.store(true);
     ran = false;
     load_ms = now_ms() - started;
+    // Written back once, after every graph is loaded: what a load compiled for the card is worth
+    // keeping, and the next run of the game opens the same graphs in milliseconds rather than
+    // seconds. It costs nothing where no graph went onto a card.
+    ncnn_device::save_cache();
     return true;
+}
+
+
+void NcnnT2I::set_device(const String &word) {
+    device.ask_for(word);
+}
+
+String NcnnT2I::get_device() const {
+    return device.asked();
+}
+
+String NcnnT2I::device_used() const {
+    return device.landed();
+}
+
+Dictionary NcnnT2I::device_memory() const {
+    if (!loaded.load() || device.landed() == String(ncnn_device::CPU_WORD)) {
+        return Dictionary();
+    }
+    return ncnn_device::memory();
+}
+
+String NcnnT2I::device_problem() const {
+    if (!device.wants_gpu) {
+        return String();
+    }
+    return ncnn_device::unavailable_reason();
+}
+
+void NcnnT2I::set_shader_cache(const String &path) {
+    ncnn_device::set_cache_path(path);
+}
+
+String NcnnT2I::shader_cache() const {
+    return ncnn_device::cache_path();
 }
 
 // What the folder says about itself. Everything the base needs is here rather than measured off
@@ -999,6 +1038,14 @@ double NcnnT2I::now_ms() {
 
 void NcnnT2I::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load", "model_dir", "num_threads"), &NcnnT2I::load);
+    ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnT2I::set_device);
+    ClassDB::bind_method(D_METHOD("get_device"), &NcnnT2I::get_device);
+    ClassDB::bind_method(D_METHOD("device_used"), &NcnnT2I::device_used);
+    ClassDB::bind_method(D_METHOD("device_problem"), &NcnnT2I::device_problem);
+    ClassDB::bind_method(D_METHOD("device_memory"), &NcnnT2I::device_memory);
+    ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnT2I::set_shader_cache);
+    ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnT2I::shader_cache);
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
     ClassDB::bind_method(D_METHOD("generate", "prompt", "seed", "width", "height"),
             &NcnnT2I::generate);
     ClassDB::bind_method(D_METHOD("generate_async", "prompt", "seed", "width", "height"),

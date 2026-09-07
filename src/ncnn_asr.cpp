@@ -87,7 +87,46 @@ bool NcnnASR::load(const String &model_dir, const String &language, int num_thre
 
     loaded.store(true);
     load_ms = now_ms() - started;
+    // Written back once, after every graph is loaded: what a load compiled for the card is worth
+    // keeping, and the next run of the game opens the same graphs in milliseconds rather than
+    // seconds. It costs nothing where no graph went onto a card.
+    ncnn_device::save_cache();
     return true;
+}
+
+
+void NcnnASR::set_device(const String &word) {
+    device.ask_for(word);
+}
+
+String NcnnASR::get_device() const {
+    return device.asked();
+}
+
+String NcnnASR::device_used() const {
+    return device.landed();
+}
+
+Dictionary NcnnASR::device_memory() const {
+    if (!loaded.load() || device.landed() == String(ncnn_device::CPU_WORD)) {
+        return Dictionary();
+    }
+    return ncnn_device::memory();
+}
+
+String NcnnASR::device_problem() const {
+    if (!device.wants_gpu) {
+        return String();
+    }
+    return ncnn_device::unavailable_reason();
+}
+
+void NcnnASR::set_shader_cache(const String &path) {
+    ncnn_device::set_cache_path(path);
+}
+
+String NcnnASR::shader_cache() const {
+    return ncnn_device::cache_path();
 }
 
 String NcnnASR::transcribe(const PackedFloat32Array &samples, int sample_rate) {
@@ -298,6 +337,14 @@ double NcnnASR::now_ms() {
 
 void NcnnASR::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load", "model_dir", "language", "num_threads"), &NcnnASR::load);
+    ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnASR::set_device);
+    ClassDB::bind_method(D_METHOD("get_device"), &NcnnASR::get_device);
+    ClassDB::bind_method(D_METHOD("device_used"), &NcnnASR::device_used);
+    ClassDB::bind_method(D_METHOD("device_problem"), &NcnnASR::device_problem);
+    ClassDB::bind_method(D_METHOD("device_memory"), &NcnnASR::device_memory);
+    ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnASR::set_shader_cache);
+    ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnASR::shader_cache);
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
     ClassDB::bind_method(D_METHOD("transcribe", "samples", "sample_rate"), &NcnnASR::transcribe);
     ClassDB::bind_method(D_METHOD("transcribe_async", "samples", "sample_rate"),
             &NcnnASR::transcribe_async);

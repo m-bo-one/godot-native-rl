@@ -62,7 +62,7 @@ private:
     static String mark_for(int width, int height);
     static bool read_pair(const PackedStringArray &files, const String &model_dir,
             const char *mark, const char *what, NcnnGraph &into, int num_threads, bool fp16,
-            String &problem);
+            bool wants_gpu, String &problem);
 };
 
 } // namespace godot

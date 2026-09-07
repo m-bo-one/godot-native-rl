@@ -183,16 +183,21 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
         return false;
     }
 
+    // The card is asked for the encoder alone. It is a thirty-second window of dense attention
+    // and most of what a clip costs, and every layer of it has a shader; the four graphs beside
+    // it are two-layer lookups and a decode of one token at a time, which the round trip through
+    // host memory costs more than the arithmetic saves.
     struct Part {
         NcnnGraph *graph;
         const char *mark;
+        bool may_use_the_card;
     };
     const Part parts[] = {
-        {&encoder, "encoder"},
-        {&decoder, "decoder"},
-        {&embed_token, "embed_token"},
-        {&embed_position, "embed_position"},
-        {&proj_out, "proj_out"},
+        {&encoder, "encoder", true},
+        {&decoder, "decoder", false},
+        {&embed_token, "embed_token", false},
+        {&embed_position, "embed_position", false},
+        {&proj_out, "proj_out", false},
     };
     for (const Part &part : parts) {
         const String param_name = pick(files, part.mark, ".ncnn.param");
@@ -200,11 +205,12 @@ bool WhisperASR::_load_graphs(const String &folder, const String &language, int 
             return false;
         }
         const String bin_name = param_name.trim_suffix(".param") + ".bin";
-        if (!part.graph->load(folder.path_join(param_name), folder.path_join(bin_name),
-                    num_threads)) {
+        part.graph->prepare(num_threads, true, part.may_use_the_card && device.wants_gpu);
+        if (!part.graph->read(folder.path_join(param_name), folder.path_join(bin_name))) {
             return false;
         }
     }
+    device.landed_on(encoder.runs_on_gpu());
 
     cache_pairs = count_cache_pairs(decoder.param);
     if (cache_pairs <= 0 || cache_pairs > MOST_CACHE_PAIRS) {
@@ -361,6 +367,7 @@ void WhisperASR::_unload_graphs() {
     vocab.clear();
     prompt.clear();
     cache_pairs = 0;
+    device.landed_on(false);
 }
 
 void WhisperASR::_report_timings(Dictionary &out) const {

@@ -1,6 +1,8 @@
 #ifndef NCNN_RUNNER_H
 #define NCNN_RUNNER_H
 
+#include "ncnn_device.h"
+
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
@@ -62,6 +64,27 @@ public:
     void poll();
     void _process(double p_delta) override;
 
+    // Which device the next load puts the graph on, "gpu" or "cpu". Set before load_model();
+    // a machine with no device loads on the processor whatever this says, and device_used() is
+    // what actually happened rather than what was asked for.
+    void set_device(const String &p_word);
+    String get_device() const;
+    String device_used() const;
+
+    // Why the card was asked for and the processor got the graph, as one sentence, or "" where
+    // nothing went wrong: the request was met, or the processor was what was asked for.
+    String device_problem() const;
+
+    // What the card has free and in total, for a host's own memory line. Empty from a graph on
+    // the processor and from a machine with no device.
+    Dictionary device_memory() const;
+
+    // Where the compiled shaders are kept between runs, as a path the C library can open. It is
+    // the host's own location and it is process-wide: every class in this library shares one
+    // cache, so whichever loads first names the file for all of them.
+    void set_shader_cache(const String &p_path);
+    String shader_cache() const;
+
     void set_input_blob_name(const String &p_name);
     String get_input_blob_name() const;
     void set_output_blob_name(const String &p_name);
@@ -81,6 +104,10 @@ private:
     // free and single-delivery). Driven by _process (in-tree) and poll() (out-of-tree). Not bound to
     // GDScript by name, so a script can't fake a completion.
     void deliver_if_ready();
+    // The device and the shared shader cache written onto a fresh net, before its structure is
+    // parsed: the loader reads them there and turns Vulkan off itself where there is no device,
+    // so this must run before load_param or the graph lands on the processor whatever was asked.
+    void apply_device();
     // True if it's safe to replace net_ now: refuses while an async inference is in flight
     // (logs via p_where) and joins a finished worker. Call before swapping net_ in load_*.
     bool ready_to_swap_net(const char *p_where);
@@ -96,6 +123,9 @@ private:
     std::vector<unsigned char> bin_copy_;
     std::unique_ptr<ncnn::Net> net_;
     bool model_loaded_ = false;
+    // Which device was asked for and which the graph got, the same pair every class in this
+    // library carries. Read at the load and written back from the net's own options after it.
+    ncnn_device::Choice device_;
     String input_blob_name_ = "input";
     String output_blob_name_ = "output";
     PackedInt32Array input_shape_;

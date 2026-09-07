@@ -107,9 +107,11 @@ bool GigaAMASR::_load_graphs(const String &folder, const String &language, int n
         return false;
     }
     const String bin_name = param_name.trim_suffix(".param") + ".bin";
-    if (!graph.load(folder.path_join(param_name), folder.path_join(bin_name), num_threads)) {
+    graph.prepare(num_threads, true, device.wants_gpu);
+    if (!graph.read(folder.path_join(param_name), folder.path_join(bin_name))) {
         return false;
     }
+    device.landed_on(graph.runs_on_gpu());
 
     // The window and then the filterbank, one band's filter after another, raw floats.
     const PackedByteArray tables = FileAccess::get_file_as_bytes(folder.path_join(tables_name));
@@ -213,6 +215,7 @@ void GigaAMASR::_unload_graphs() {
     mel_filters.clear();
     tokens.clear();
     blank = -1;
+    device.landed_on(false);
 }
 
 void GigaAMASR::_report_timings(Dictionary &out) const {

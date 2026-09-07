@@ -1,6 +1,7 @@
 #ifndef NCNN_T2I_H
 #define NCNN_T2I_H
 
+#include "ncnn_device.h"
 #include "ncnn_graph.h"
 
 #include <godot_cpp/classes/image.hpp>
@@ -151,6 +152,11 @@ protected:
     // again for another picture size, so the second read runs on the same number.
     int threads = 1;
 
+    // Which device was asked for, and which the graphs got. A family reads `wants_gpu` as it
+    // prepares each graph -- the text encoder stays on the processor -- and writes back what
+    // landed. A structure read again for another size has to be prepared with the same word.
+    ncnn_device::Choice device;
+
     // What the manifest said, which is the whole of what the base needs to know about a
     // family: how a latent is shaped, how many steps it takes and how they are spaced, how
     // wide the token window is, and which sizes the folder actually carries graphs for.
@@ -212,6 +218,28 @@ public:
     // A thread count of zero or less takes half the cores the library counts, because a
     // language model is usually running on the other half.
     bool load(const String &model_dir, int num_threads);
+
+    // Which device the graphs are asked for, set before load() and read at it. "gpu" or "cpu";
+    // a machine with no device loads on the processor whatever this says, and device_used() is
+    // what actually happened.
+    void set_device(const String &word);
+    String get_device() const;
+    String device_used() const;
+
+    // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
+    // nothing went wrong: the request was met, or the processor was what was asked for. It is
+    // the build, the driver or the device, and it says which.
+    String device_problem() const;
+
+    // What the card has free and in total, for the meter that gathers a machine's own line.
+    // Empty from a model on the processor and from a machine with no device.
+    Dictionary device_memory() const;
+
+    // Where the compiled shaders are kept between runs, as a path the C library can open. It is
+    // the host's own location and it is process-wide: the picture model, the recogniser and the
+    // runner share one cache, so whichever is loaded first names the file for all of them.
+    void set_shader_cache(const String &path);
+    String shader_cache() const;
 
     // One prompt to one picture, on the calling thread. A null reference is a picture that was
     // refused, and last_problem() says why. A seed of zero is drawn from the clock.

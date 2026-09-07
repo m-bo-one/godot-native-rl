@@ -41,14 +41,25 @@ struct NcnnGraph {
     // Half-precision blob storage is a flag per graph rather than one over a whole model: a
     // residual stream that grows past the format's ceiling -- a text encoder's does -- has to
     // be kept single while the graphs beside it stay half, and one switch cannot say that.
-    void prepare(int num_threads, bool fp16_storage = true);
+    //
+    // The device is a flag per graph for the same reason: the graphs of one model do not all
+    // win on the card, and one carrying a layer the backend has no shader for pays a round trip
+    // through host memory per layer. A graph that asks for the card and finds none loads onto
+    // the processor rather than refusing -- runs_on_gpu() is what it got, not what it asked for.
+    void prepare(int num_threads, bool fp16_storage = true, bool wants_gpu = false);
     bool read(const String &param_path, const String &bin_path);
     bool load(const String &param_path, const String &bin_path, int num_threads);
 
     // The structure read again over the weights this graph already holds. One weight file
     // behind several structures is what a network exported for two picture sizes is, and
     // reading the file a second time would cost its size in memory for nothing.
-    bool reread(const String &param_path, int num_threads, bool fp16_storage = true);
+    bool reread(const String &param_path, int num_threads, bool fp16_storage = true,
+            bool wants_gpu = false);
+
+    // Which device this graph actually loaded onto. It is read off the net's own options, which
+    // the loader turns off itself where there is no usable device, so it is the answer and not
+    // the request. Meaningful only once read() or reread() has answered true.
+    bool runs_on_gpu() const;
 
     void clear();
 };

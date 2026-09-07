@@ -1,5 +1,6 @@
 #include "ncnn_graph.h"
 
+#include "ncnn_device.h"
 #include "ncnn_report.h"
 
 #include <godot_cpp/classes/file_access.hpp>
@@ -51,13 +52,36 @@ private:
 
 } // namespace
 
-void NcnnGraph::prepare(int num_threads, bool fp16_storage) {
-    clear();
+// The one place a net's device and precision are set, so the two roads into a loaded graph --
+// a first read and a structure read again over the same weights -- cannot drift apart in either.
+namespace {
+
+void set_options(ncnn::Net &net, int num_threads, bool fp16_storage, bool wants_gpu) {
     net.opt.num_threads = num_threads;
-    net.opt.use_vulkan_compute = false;
+    net.opt.use_vulkan_compute = wants_gpu && godot::ncnn_device::is_available();
     net.opt.use_fp16_packed = fp16_storage;
     net.opt.use_fp16_storage = fp16_storage;
     net.opt.use_fp16_arithmetic = fp16_storage;
+#if NCNN_VULKAN
+    // The cache is shared by every net in the process and kept across runs. Without it each net
+    // builds its own and translates every shader again, which the card pays for in seconds per
+    // graph; with it a second graph of the same shape opens in milliseconds.
+    if (net.opt.use_vulkan_compute) {
+        net.opt.pipeline_cache = godot::ncnn_device::shared_cache();
+    }
+#endif
+}
+
+} // namespace
+
+void NcnnGraph::prepare(int num_threads, bool fp16_storage, bool wants_gpu) {
+    clear();
+    set_options(net, num_threads, fp16_storage, wants_gpu);
+}
+
+
+bool NcnnGraph::runs_on_gpu() const {
+    return net.opt.use_vulkan_compute;
 }
 
 // The files are read through the engine rather than by the library, so a model inside an
@@ -101,7 +125,8 @@ bool NcnnGraph::load(const String &param_path, const String &bin_path, int num_t
 // The weight buffer is taken out of the way before the net is cleared and put back after, so
 // the structure is parsed against bytes that never left memory. Every layer of the new net
 // aliases them exactly as the old one did, which is why they may not be freed in between.
-bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_storage) {
+bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_storage,
+        bool wants_gpu) {
     if (weights.is_empty()) {
         return false;
     }
@@ -113,11 +138,7 @@ bool NcnnGraph::reread(const String &param_path, int num_threads, bool fp16_stor
     next.append(0);
 
     net.clear();
-    net.opt.num_threads = num_threads;
-    net.opt.use_vulkan_compute = false;
-    net.opt.use_fp16_packed = fp16_storage;
-    net.opt.use_fp16_storage = fp16_storage;
-    net.opt.use_fp16_arithmetic = fp16_storage;
+    set_options(net, num_threads, fp16_storage, wants_gpu);
     param = next;
     weights = held;
 

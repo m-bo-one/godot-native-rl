@@ -47,7 +47,15 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_input_shape", "shape"), &NcnnRunner::set_input_shape);
     ClassDB::bind_method(D_METHOD("get_input_shape"), &NcnnRunner::get_input_shape);
     ClassDB::bind_method(D_METHOD("clear_input_shape"), &NcnnRunner::clear_input_shape);
+    ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnRunner::set_device);
+    ClassDB::bind_method(D_METHOD("get_device"), &NcnnRunner::get_device);
+    ClassDB::bind_method(D_METHOD("device_used"), &NcnnRunner::device_used);
+    ClassDB::bind_method(D_METHOD("device_problem"), &NcnnRunner::device_problem);
+    ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
+    ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnRunner::set_shader_cache);
+    ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnRunner::shader_cache);
 
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "input_blob_name"), "set_input_blob_name", "get_input_blob_name");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "output_blob_name"), "set_output_blob_name", "get_output_blob_name");
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "input_shape"), "set_input_shape", "get_input_shape");
@@ -67,6 +75,8 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
 
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
+    device_.landed_on(false);
+    apply_device();
     // The old net (the only consumer of a previous buffer-load's copy) is gone — release the
     // copy NOW so no failure path below can leave a netless runner pinning stale weights.
     bin_copy_.clear();
@@ -89,6 +99,8 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
     }
 
     model_loaded_ = true;
+    device_.landed_on(net_->opt.use_vulkan_compute);
+    ncnn_device::save_cache();
     return true;
 }
 
@@ -103,6 +115,8 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
 
     net_ = std::make_unique<ncnn::Net>();
     model_loaded_ = false;
+    device_.landed_on(false);
+    apply_device();
     // The old net (the only consumer of the previous copy) is gone — release the copy NOW so
     // the param-failure path below can't leave a netless runner pinning stale weights.
     bin_copy_.clear();
@@ -138,7 +152,55 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
     }
 
     model_loaded_ = true;
+    device_.landed_on(net_->opt.use_vulkan_compute);
+    ncnn_device::save_cache();
     return true;
+}
+
+void NcnnRunner::set_device(const String &p_word) {
+    device_.ask_for(p_word);
+}
+
+String NcnnRunner::get_device() const {
+    return device_.asked();
+}
+
+String NcnnRunner::device_used() const {
+    return device_.landed();
+}
+
+String NcnnRunner::device_problem() const {
+    if (!device_.wants_gpu) {
+        return String();
+    }
+    return ncnn_device::unavailable_reason();
+}
+
+Dictionary NcnnRunner::device_memory() const {
+    if (!model_loaded_ || device_.landed() == String(ncnn_device::CPU_WORD)) {
+        return Dictionary();
+    }
+    return ncnn_device::memory();
+}
+
+void NcnnRunner::set_shader_cache(const String &p_path) {
+    ncnn_device::set_cache_path(p_path);
+}
+
+String NcnnRunner::shader_cache() const {
+    return ncnn_device::cache_path();
+}
+
+void NcnnRunner::apply_device() {
+    if (!net_) {
+        return;
+    }
+    net_->opt.use_vulkan_compute = device_.wants_gpu && ncnn_device::is_available();
+#if NCNN_VULKAN
+    if (net_->opt.use_vulkan_compute) {
+        net_->opt.pipeline_cache = ncnn_device::shared_cache();
+    }
+#endif
 }
 
 PackedFloat32Array NcnnRunner::run_inference(const PackedFloat32Array &p_input) {

@@ -34,12 +34,14 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
 
     // Single precision for the text encoder's blobs when the manifest asks: its residual stream
     // overflows half precision inside a normalisation, and the result is a picture of something
-    // else with no error anywhere.
+    // else with no error anywhere. It stays on the processor with it -- the same normalisation
+    // squares into a half blob on the card -- and one lookup per token has nothing to win there.
     if (!read_pair(files, model_dir, CLIP_MARK, "text encoder", clip, num_threads,
-                !text_encoder_fp32, problem)) {
+                !text_encoder_fp32, false, problem)) {
         return false;
     }
-    if (!read_pair(files, model_dir, DEC_MARK, "decoder", dec, num_threads, true, problem)) {
+    if (!read_pair(files, model_dir, DEC_MARK, "decoder", dec, num_threads, true,
+                device.wants_gpu, problem)) {
         return false;
     }
 
@@ -62,7 +64,7 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
     }
     const String unet_param = pick(files, mark_for(sizes[0].first, sizes[0].second),
             PARAM_SUFFIX);
-    unet.prepare(num_threads);
+    unet.prepare(num_threads, true, device.wants_gpu);
     if (!unet.read(model_dir.path_join(unet_param), model_dir.path_join(unet_bin))) {
         problem = String("Govorilka: the denoiser would not load from \"{0}\" and \"{1}\".")
                           .format(Array::make(unet_param, unet_bin));
@@ -70,11 +72,15 @@ bool Sd1T2I::_load_graphs(const String &model_dir, const Dictionary &manifest, i
     }
     unet_width = sizes[0].first;
     unet_height = sizes[0].second;
+    // The denoiser is what a picture is made of -- every step of the schedule runs through it --
+    // so it is the graph the row reports. The decoder follows it onto the same device.
+    device.landed_on(unet.runs_on_gpu());
     return true;
 }
 
 bool Sd1T2I::read_pair(const PackedStringArray &files, const String &model_dir, const char *mark,
-        const char *what, NcnnGraph &into, int num_threads, bool fp16, String &problem) {
+        const char *what, NcnnGraph &into, int num_threads, bool fp16, bool wants_gpu,
+        String &problem) {
     const String param = pick(files, mark, PARAM_SUFFIX);
     const String weights = pick(files, mark, BIN_SUFFIX);
     if (param.is_empty() || weights.is_empty()) {
@@ -83,7 +89,7 @@ bool Sd1T2I::read_pair(const PackedStringArray &files, const String &model_dir, 
                           .format(Array::make(what, model_dir, mark, PARAM_SUFFIX, BIN_SUFFIX));
         return false;
     }
-    into.prepare(num_threads, fp16);
+    into.prepare(num_threads, fp16, wants_gpu);
     if (!into.read(model_dir.path_join(param), model_dir.path_join(weights))) {
         problem = String("Govorilka: the {0} would not load from \"{1}\" and \"{2}\".")
                           .format(Array::make(what, param, weights));
@@ -99,6 +105,7 @@ void Sd1T2I::_unload_graphs() {
     folder = String();
     unet_width = 0;
     unet_height = 0;
+    device.landed_on(false);
 }
 
 String Sd1T2I::mark_for(int width, int height) {
@@ -128,7 +135,7 @@ bool Sd1T2I::_prepare_size(int width, int height, String &problem) {
     }
 
     const double at = now_ms();
-    if (!unet.reread(folder.path_join(param), threads)) {
+    if (!unet.reread(folder.path_join(param), threads, true, device.wants_gpu)) {
         unet_width = 0;
         unet_height = 0;
         problem = String("Govorilka: the {0}x{1} structure would not read over these weights.")

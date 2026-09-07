@@ -1,6 +1,7 @@
 #ifndef NCNN_ASR_H
 #define NCNN_ASR_H
 
+#include "ncnn_device.h"
 #include "ncnn_graph.h"
 
 #include <godot_cpp/classes/ref_counted.hpp>
@@ -72,6 +73,10 @@ protected:
     // work -- a front end computed by hand -- across the same number the graphs run on.
     int threads = 1;
 
+    // Which device was asked for, and which the graphs got. A family reads `wants_gpu` as it
+    // prepares each graph -- not all of them win on the card -- and writes back what landed.
+    ncnn_device::Choice device;
+
     // The two halves a family supplies. _load_graphs reads its own files out of the folder
     // and refuses with false; _decode takes sixteen-kilohertz mono in [-1, 1] and answers the
     // text, empty for a clip it could not read. Both run with the busy flag already held.
@@ -110,6 +115,29 @@ public:
     ~NcnnASR();
 
     bool load(const String &model_dir, const String &language, int num_threads);
+
+    // Which device the graphs are asked for, set before load() and read at it. "gpu" or "cpu";
+    // a machine with no device loads on the processor whatever this says, and device_used()
+    // is what actually happened.
+    void set_device(const String &word);
+    String get_device() const;
+    String device_used() const;
+
+    // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
+    // nothing went wrong: the request was met, or the processor was what was asked for. It is
+    // the build, the driver or the device, and it says which.
+    String device_problem() const;
+
+    // What the card has free and in total, for the meter that gathers a machine's own line.
+    // Empty from a recogniser on the processor and from a machine with no device.
+    Dictionary device_memory() const;
+
+    // Where the compiled shaders are kept between runs, as a path the C library can open. It is
+    // the host's own location and it is process-wide: the recogniser, the picture model and the
+    // runner share one cache, so whichever is loaded first names the file for all of them.
+    void set_shader_cache(const String &path);
+    String shader_cache() const;
+
     String transcribe(const PackedFloat32Array &samples, int sample_rate);
     bool transcribe_async(const PackedFloat32Array &samples, int sample_rate);
     bool is_busy() const;
