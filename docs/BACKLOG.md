@@ -654,6 +654,39 @@ of godot_rl training — godot_rl can train these; we just can't yet *deploy* th
     one scene renders any episode. Pairs with item 34: train in Python, pick a replay, export a clip.
     Rendering needs a display (headless can't), so it is not wired into headless CI.
 
+## Upstream (ncnn), open
+
+**RotaryEmbed reads its cos/sin cache at two different strides** — ncnn `20260526`.
+`src/layer/rotaryembed.cpp` reads the cache as `cos_cache.row(i)`, the table's own stride;
+`src/layer/vulkan/shader/rotaryembed.comp` and `rotaryembed_pack4.comp` index it as
+`gy * (embed_dim / 2) + gx`. For a cache wider than `embed_dim / 2` the two disagree and
+nothing reports it: positions `2k` and `2k+1` both read the angles of `k`. A checkpoint whose
+rotate-half multiplies the whole embedding writes exactly such a cache — the frequencies once
+and then again — so lowering one through pnnx gives a graph that is right on the processor and
+quietly wrong on the card.
+
+Worked around here: `src/gigaam_asr.cpp::rope_tables` hands the layer `ROPE_DIM / 2` columns a
+row, which both implementations read alike. `GigaAMASR::rope_table_width()` reports the width a
+decode really builds, so a suite above this library can pin it without loading a model.
+
+Reproducer — this graph, an empty `.bin`, and `in0` of `w=8 h=4 c=2` against a cache of
+`w=8 h=4 c=1` holding the four angles of each position written twice:
+
+```
+7767517
+4 4
+Input                    in0                      0 1 in0
+Input                    in1                      0 1 in1
+Input                    in2                      0 1 in2
+RotaryEmbed              rope                     3 1 in0 in1 in2 out0 0=0
+```
+
+Run it once on each device. On the card rows 0 and 1 both come back unrotated and rows 2 and 3
+are both rotated by the angles of position 1 — that is the tell — while the CPU rotates each of
+the four positions by its own angles, which is the right answer. Everything needed to reproduce
+is above. Either the shader should take the cache's own stride, or `load_param`/`forward` should
+refuse a cache that is not `embed_dim / 2` wide.
+
 ## Retired / split
 
 20. 🔀 **Split 2026-06-03** — this was a catalog line bundling ten loosely-related ideas, not an
