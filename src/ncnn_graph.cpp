@@ -2,6 +2,7 @@
 
 #include "ncnn_device.h"
 #include "ncnn_report.h"
+#include "rope_at.h"
 
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/time.hpp>
@@ -127,6 +128,9 @@ bool NcnnGraph::read(const String &param_path, const String &bin_path) {
     // The parser reads the structure as a C string and stops at the first zero byte, which a
     // file has no reason to end with. Appended here rather than trusted to the reader.
     param.append(0);
+    // Before the parse and with the structure in hand, so a graph carrying a rotary embedding
+    // gets the one that reads its tables at their own stride and every other graph is untouched.
+    godot::rope_at::install(net, (const char *)param.ptr());
     if (net.load_param_mem((const char *)param.ptr()) != 0) {
         clear();
         return false;
@@ -174,6 +178,7 @@ bool NcnnGraph::reread(const String &param_path, int num_threads, const Options 
     weights = held;
 
     ncnn_report::note(String("re-parsing the structure of ") + param_path.get_file());
+    godot::rope_at::install(net, (const char *)param.ptr());
     if (net.load_param_mem((const char *)param.ptr()) != 0) {
         clear();
         return false;

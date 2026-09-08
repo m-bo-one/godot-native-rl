@@ -54,17 +54,17 @@ int subsampled(int frames) {
     return frames;
 }
 
-// The cos and sin tables for `positions` positions: the twenty-four frequencies once, a row
-// per position. Half of the embedding wide and not all of it -- the rotate-half layer pairs
-// each frequency with itself and reads only these, and the two implementations of it disagree
-// about the stride of a wider table: the processor's walks the table's own rows, the card's
-// shader indexes `row * embed_dim / 2`. A row of forty-eight is read at half rate there, which
-// is a graph that answers plausible words at the wrong positions.
+// The cos and sin tables for `positions` positions, a row per position, the whole embedding
+// wide: the twenty-four frequencies and then the same twenty-four again, which is the shape the
+// checkpoint's own buffer has because a rotate-half pairs each frequency with itself.
+//
+// The width is the checkpoint's and not the layer's to choose: `RopeAt` carries whatever row
+// width it is handed across to both devices, so this writes the tables the way it computes them.
 //
 // Single precision throughout, which is what the checkpoint's own buffer was computed in.
 void rope_tables(int positions, ncnn::Mat &cosines, ncnn::Mat &sines) {
-    cosines.create(ROPE_DIM / 2, positions, 1);
-    sines.create(ROPE_DIM / 2, positions, 1);
+    cosines.create(ROPE_DIM, positions, 1);
+    sines.create(ROPE_DIM, positions, 1);
     if (cosines.empty() || sines.empty()) {
         return;
     }
@@ -77,8 +77,13 @@ void rope_tables(int positions, ncnn::Mat &cosines, ncnn::Mat &sines) {
     for (int p = 0; p < positions; p++) {
         for (int i = 0; i < ROPE_DIM / 2; i++) {
             const float angle = (float)p * inv_freq[i];
-            cos_out[p * (ROPE_DIM / 2) + i] = cosf(angle);
-            sin_out[p * (ROPE_DIM / 2) + i] = sinf(angle);
+            const float c = cosf(angle);
+            const float s = sinf(angle);
+            for (int repeat = 0; repeat < 2; repeat++) {
+                const int at = p * ROPE_DIM + repeat * (ROPE_DIM / 2) + i;
+                cos_out[at] = c;
+                sin_out[at] = s;
+            }
         }
     }
 }

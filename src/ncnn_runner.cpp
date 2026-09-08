@@ -1,5 +1,7 @@
 #include "ncnn_runner.h"
 
+#include "rope_at.h"
+
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/callable_method_pointer.hpp>
@@ -61,6 +63,7 @@ void NcnnRunner::_bind_methods() {
     ClassDB::bind_method(D_METHOD("device_memory"), &NcnnRunner::device_memory);
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnRunner::set_shader_cache);
     ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnRunner::shader_cache);
+    ClassDB::bind_method(D_METHOD("rope_overwrites"), &NcnnRunner::rope_overwrites);
 
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "input_blob_name"), "set_input_blob_name", "get_input_blob_name");
@@ -69,6 +72,13 @@ void NcnnRunner::_bind_methods() {
 
     ADD_SIGNAL(MethodInfo("inference_completed",
         PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "output")));
+}
+
+// How many nets in this process have had the rotary layer put in front of the built-in. It is
+// the whole instrument for "a graph that names no such layer registers nothing", which is
+// otherwise only visible as a line on stderr.
+int NcnnRunner::rope_overwrites() const {
+    return rope_at::registrations();
 }
 
 bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path) {
@@ -85,6 +95,9 @@ bool NcnnRunner::load_model(const String &p_param_path, const String &p_bin_path
     model_loaded_ = false;
     device_.landed_on(false);
     apply_device();
+    // Conditional like the buffer road below: the library announces every overwritten built-in
+    // on stderr, so a net that carries no rotary layer must not register one.
+    rope_at::install_for_file(*net_, p_param_path);
     // The old net (the only consumer of a previous buffer-load's copy) is gone — release the
     // copy NOW so no failure path below can leave a netless runner pinning stale weights.
     bin_copy_.clear();
@@ -136,6 +149,7 @@ bool NcnnRunner::load_model_from_buffers(const PackedByteArray &p_param, const P
     std::memcpy(param_text.data(), p_param.ptr(), p_param.size());
     param_text[p_param.size()] = '\0';
 
+    rope_at::install(*net_, param_text.data());
     const int param_result = net_->load_param_mem(param_text.data());
     if (param_result != 0) {
         UtilityFunctions::push_error("NcnnRunner.load_model_from_buffers: failed to parse param buffer.");

@@ -109,6 +109,10 @@ public:
     void set_shader_cache(const String &p_path);
     String shader_cache() const;
 
+    // Process-wide count of rotary overwrites; see the note on the definition. A plain method
+    // rather than a static one because that is what ClassDB can bind.
+    int rope_overwrites() const;
+
     void set_input_blob_name(const String &p_name);
     String get_input_blob_name() const;
     void set_output_blob_name(const String &p_name);
