@@ -2,6 +2,7 @@
 
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/error_macros.hpp>
 #include <godot_cpp/variant/variant.hpp>
 
@@ -346,5 +347,15 @@ String GigaAMASR::_decode(const std::vector<float> &samples) {
     return String::utf8(bytes.c_str(), (int64_t)bytes.length()).strip_edges();
 }
 
+// The width the tables are really built at, rather than the constant they are built from: a
+// change to `rope_tables` is what this has to catch, and only running it can see one.
+int GigaAMASR::rope_table_width() const {
+    ncnn::Mat cosines;
+    ncnn::Mat sines;
+    rope_tables(1, cosines, sines);
+    return cosines.w;
+}
+
 void GigaAMASR::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("rope_table_width"), &GigaAMASR::rope_table_width);
 }

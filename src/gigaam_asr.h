@@ -59,6 +59,11 @@ public:
 
     String describe_family() const override;
 
+    // How wide the rotary tables this class hands the graph are, built the way a decode builds
+    // them. Bound because nothing else can see it: ncnn's rotate-half layer reads the cache at
+    // the table's own stride on the processor and at `row * embed_dim / 2` in the shader.
+    int rope_table_width() const;
+
 private:
     int output_width();
     bool run_graph(const ncnn::Mat &mel, ncnn::Mat &logits);
