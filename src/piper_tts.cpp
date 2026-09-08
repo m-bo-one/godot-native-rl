@@ -349,8 +349,9 @@ bool PiperTTS::_load_graphs(const String &folder, int num_threads) {
         }
     }
 
-    // What the graphs got, read off the decoder: it is the one that dominates a sentence, and
-    // every graph of this voice was prepared for the same device, so one answers for all.
+    // What the graphs got, read off the decoder: it dominates a sentence and is one of the two
+    // the row can actually move. The encoder, the duration predictor and the embedding stay on
+    // the processor whatever the row says, so a reading taken off one of them would answer no.
     device.landed_on(dec.runs_on_gpu());
 
     // What the decoder takes says whether this export has voices: a single-voice model takes
