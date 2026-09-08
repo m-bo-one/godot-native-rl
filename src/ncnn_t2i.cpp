@@ -578,16 +578,18 @@ PackedInt32Array NcnnT2I::tokenize(const String &prompt) const {
     return ids;
 }
 
-Ref<Image> NcnnT2I::generate(const String &prompt, int64_t seed, int width, int height) {
+Ref<Image> NcnnT2I::generate(const String &prompt, int64_t seed, int width, int height,
+        const String &negative) {
     BusyGuard guard(busy);
     if (!guard.taken()) {
         return Ref<Image>();
     }
     dropped.store(false);
-    return run(prompt, (uint64_t)seed, width, height, problem);
+    return run(prompt, negative, (uint64_t)seed, width, height, problem);
 }
 
-bool NcnnT2I::generate_async(const String &prompt, int64_t seed, int width, int height) {
+bool NcnnT2I::generate_async(const String &prompt, int64_t seed, int width, int height,
+        const String &negative) {
     BusyGuard guard(busy);
     if (!guard.taken()) {
         // The picture in flight has already been thrown away, so what is left of it is only in
@@ -623,7 +625,8 @@ bool NcnnT2I::generate_async(const String &prompt, int64_t seed, int width, int 
     owed_at.store(at);
     owed.store(true);
     try {
-        worker = std::thread(&NcnnT2I::work, this, prompt, (uint64_t)seed, width, height, at);
+        worker = std::thread(&NcnnT2I::work, this, prompt, negative, (uint64_t)seed, width,
+                height, at);
     } catch (...) {
         answer_taken.store(true);
         owed.store(false);
@@ -760,7 +763,8 @@ String NcnnT2I::_size_refused(int width, int height) const {
 // One prompt through the family's graphs, under the lock that keeps the graphs in place until
 // it returns. The run is fenced: an exception out of it would unwind into the engine, which has
 // no handler and dies, where no picture is something the host is told about.
-Ref<Image> NcnnT2I::run(const String &prompt, uint64_t seed, int width, int height, String &said) {
+Ref<Image> NcnnT2I::run(const String &prompt, const String &negative, uint64_t seed, int width,
+        int height, String &said) {
     std::lock_guard<std::mutex> hold(graphs_lock);
     // Read again with the lock held: an unload() between the busy flag and this line has
     // already freed the graphs, and the answer to that is nothing rather than a run.
@@ -777,7 +781,7 @@ Ref<Image> NcnnT2I::run(const String &prompt, uint64_t seed, int width, int heig
     said = String();
     Ref<Image> picture;
     try {
-        picture = make(prompt, seed, width, height, said);
+        picture = make(prompt, negative, seed, width, height, said);
     } catch (const std::exception &thrown) {
         picture = Ref<Image>();
         said = _faulted(ncnn_report::describe(thrown));
@@ -792,8 +796,8 @@ Ref<Image> NcnnT2I::run(const String &prompt, uint64_t seed, int width, int heig
 // The whole of a picture: the prompt to a token window, the window to a conditioning sequence,
 // a seeded latent, the schedule's steps, and the latent to pixels. Everything here is shared by
 // every family; what a family answers is which graph each of the three calls reaches.
-Ref<Image> NcnnT2I::make(const String &prompt, uint64_t seed, int width, int height,
-        String &problem_out) {
+Ref<Image> NcnnT2I::make(const String &prompt, const String &negative, uint64_t seed,
+        int width, int height, String &problem_out) {
     last_width = width;
     last_height = height;
 
@@ -821,9 +825,19 @@ Ref<Image> NcnnT2I::make(const String &prompt, uint64_t seed, int width, int hei
     ncnn::Mat blank;
     // A second sequence only when the manifest asks for one: guidance of 1 is the model's own
     // answer with nothing to weigh it against, and the second pass then costs a whole UNet.
+    //
+    // What that sequence says is the negative, and an empty negative is the empty prompt this
+    // always used -- so a folder at guidance 1 is untouched by any of it, and a folder above 1
+    // that was given no negative draws exactly what it drew before.
     if (guidance > 1.0f) {
-        const PackedInt32Array empty = tokenize(String());
-        if (!_encode_text(empty.ptr(), empty.size(), blank, problem_out)) {
+        const PackedInt32Array against = tokenize(negative);
+        if (against.size() != context_length) {
+            problem_out = String("Govorilka: the negative came to {0} tokens where this model "
+                                 "takes a window of {1}. The tokeniser did not load.")
+                                  .format(Array::make(against.size(), context_length));
+            return Ref<Image>();
+        }
+        if (!_encode_text(against.ptr(), against.size(), blank, problem_out)) {
             return Ref<Image>();
         }
         blank = blank.clone();
@@ -990,12 +1004,13 @@ PackedFloat32Array NcnnT2I::advance(const PackedFloat32Array &latent,
 
 // The worker's whole life: run, then hand the picture to the main thread. Emitting from here
 // instead would put a signal on a thread the engine's listeners are not written for.
-void NcnnT2I::work(String prompt, uint64_t seed, int width, int height, int64_t at) {
+void NcnnT2I::work(String prompt, String negative, uint64_t seed, int width, int height,
+        int64_t at) {
     // Fenced again out here, around everything the worker does and not only the model: an
     // exception that escapes a thread body is std::terminate, and the process then ends with no
     // line anywhere. Whatever happens, the delivery is still posted.
     try {
-        pending_picture = run(prompt, seed, width, height, pending_problem);
+        pending_picture = run(prompt, negative, seed, width, height, pending_problem);
     } catch (const std::exception &thrown) {
         pending_picture = Ref<Image>();
         pending_problem = _faulted(ncnn_report::describe(thrown));
@@ -1083,10 +1098,14 @@ void NcnnT2I::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnT2I::set_shader_cache);
     ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnT2I::shader_cache);
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
-    ClassDB::bind_method(D_METHOD("generate", "prompt", "seed", "width", "height"),
-            &NcnnT2I::generate);
-    ClassDB::bind_method(D_METHOD("generate_async", "prompt", "seed", "width", "height"),
-            &NcnnT2I::generate_async);
+    // The negative is last and defaulted rather than fourth: every host written against the
+    // four-argument call keeps working untouched, and a caller that wants one adds a word at the
+    // end. Bound the other way round it would take the seed's place and draw silent nonsense.
+    ClassDB::bind_method(D_METHOD("generate", "prompt", "seed", "width", "height", "negative"),
+            &NcnnT2I::generate, DEFVAL(String()));
+    ClassDB::bind_method(
+            D_METHOD("generate_async", "prompt", "seed", "width", "height", "negative"),
+            &NcnnT2I::generate_async, DEFVAL(String()));
     ClassDB::bind_method(D_METHOD("cancel"), &NcnnT2I::cancel);
     ClassDB::bind_method(D_METHOD("deliver_pending"), &NcnnT2I::deliver_pending);
     ClassDB::bind_method(D_METHOD("wait_for_picture", "timeout_ms"), &NcnnT2I::wait_for_picture);

@@ -263,12 +263,19 @@ public:
 
     // One prompt to one picture, on the calling thread. A null reference is a picture that was
     // refused, and last_problem() says why. A seed of zero is drawn from the clock.
-    Ref<Image> generate(const String &prompt, int64_t seed, int width, int height);
+    //
+    // The negative is what the picture is steered away from, and it is last and optional so that
+    // every caller written against the four-argument call keeps working unchanged. It reaches
+    // the network only where the folder asks for guidance above one: with guidance of one there
+    // is no second pass for it to steer and the words are ignored rather than refused.
+    Ref<Image> generate(const String &prompt, int64_t seed, int width, int height,
+            const String &negative = String());
 
     // The same on a worker, answered by the picture_ready or failed signal on the main thread.
     // False is a turn that never started: the graphs are held by a picture nobody cancelled,
     // or the thread could not be made.
-    bool generate_async(const String &prompt, int64_t seed, int width, int height);
+    bool generate_async(const String &prompt, int64_t seed, int width, int height,
+            const String &negative = String());
 
     // Throws away the answer to the picture in flight without waiting for it. Nothing is
     // emitted for that turn, and the next generate_async() joins what is left of it rather
@@ -333,9 +340,11 @@ private:
     static void _apply_step(float *sample, const float *predicted, int count, Scheduler road,
             const Step &step, bool last, T2INoise &noise);
 
-    Ref<Image> make(const String &prompt, uint64_t seed, int width, int height, String &problem);
-    Ref<Image> run(const String &prompt, uint64_t seed, int width, int height, String &said);
-    void work(String prompt, uint64_t seed, int width, int height, int64_t at);
+    Ref<Image> make(const String &prompt, const String &negative, uint64_t seed, int width,
+            int height, String &problem);
+    Ref<Image> run(const String &prompt, const String &negative, uint64_t seed, int width,
+            int height, String &said);
+    void work(String prompt, String negative, uint64_t seed, int width, int height, int64_t at);
     void deliver(int64_t at);
     void join_worker();
 };
