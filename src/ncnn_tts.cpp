@@ -127,7 +127,78 @@ bool NcnnTTS::load(const String &model_dir, int num_threads) {
 
     loaded.store(true);
     load_ms = now_ms() - started;
+    // Written back once, after every graph is loaded: what a load compiled for the card is worth
+    // keeping, and the next run of the game opens the same graphs in milliseconds rather than
+    // seconds. It costs nothing where no graph went onto a card.
+    ncnn_device::save_cache();
     return true;
+}
+
+void NcnnTTS::set_device(const String &word) {
+    device.ask_for(word);
+}
+
+String NcnnTTS::get_device() const {
+    return device.asked();
+}
+
+String NcnnTTS::device_used() const {
+    return device.landed_word();
+}
+
+// The driver's own name and nothing built out of it. A row wanting the word and the name together
+// joins them on the other side of this boundary, where the addon's one rule for that already is.
+String NcnnTTS::device_name() const {
+    if (!device.is_on_the_card()) {
+        return String();
+    }
+    return ncnn_device::name();
+}
+
+// The addon's own choice of card, as an index into the loader's enumeration and as the driver's
+// name for it. A position rather than a name is what another library is pointed with: two cards
+// of one model are one name and two positions.
+int NcnnTTS::chosen_card_index() const {
+    return ncnn_device::chosen_index();
+}
+
+String NcnnTTS::chosen_card_name() const {
+    if (ncnn_device::chosen_index() < 0) {
+        return String();
+    }
+    return ncnn_device::name();
+}
+
+String NcnnTTS::device_identity() const {
+    return ncnn_device::chosen_identity();
+}
+
+// The card a host wants, handed on to the one place that knows about devices. Set before the
+// load, because the look for a card happens once and every answer afterwards reads its choice.
+void NcnnTTS::set_device_address(const String &p_address) {
+    ncnn_device::set_device_address(p_address);
+}
+
+Dictionary NcnnTTS::device_memory() const {
+    if (!loaded.load() || !device.is_on_the_card()) {
+        return Dictionary();
+    }
+    return ncnn_device::memory();
+}
+
+String NcnnTTS::device_problem() const {
+    if (!device.wants_the_card()) {
+        return String();
+    }
+    return ncnn_device::unavailable_reason();
+}
+
+void NcnnTTS::set_shader_cache(const String &path) {
+    ncnn_device::set_cache_path(path);
+}
+
+String NcnnTTS::shader_cache() const {
+    return ncnn_device::cache_path();
 }
 
 PackedFloat32Array NcnnTTS::synthesise(const PackedInt32Array &ids, int speaker) {
@@ -385,8 +456,21 @@ void NcnnTTS::_bind_methods() {
     ClassDB::bind_method(D_METHOD("describe_family"), &NcnnTTS::describe_family);
     ClassDB::bind_method(D_METHOD("sample_rate"), &NcnnTTS::sample_rate);
     ClassDB::bind_method(D_METHOD("speaker_count"), &NcnnTTS::speaker_count);
+    ClassDB::bind_method(D_METHOD("set_device", "word"), &NcnnTTS::set_device);
+    ClassDB::bind_method(D_METHOD("get_device"), &NcnnTTS::get_device);
+    ClassDB::bind_method(D_METHOD("device_used"), &NcnnTTS::device_used);
+    ClassDB::bind_method(D_METHOD("device_name"), &NcnnTTS::device_name);
+    ClassDB::bind_method(D_METHOD("chosen_card_index"), &NcnnTTS::chosen_card_index);
+    ClassDB::bind_method(D_METHOD("chosen_card_name"), &NcnnTTS::chosen_card_name);
+    ClassDB::bind_method(D_METHOD("device_identity"), &NcnnTTS::device_identity);
+    ClassDB::bind_method(D_METHOD("set_device_address", "address"), &NcnnTTS::set_device_address);
+    ClassDB::bind_method(D_METHOD("device_problem"), &NcnnTTS::device_problem);
+    ClassDB::bind_method(D_METHOD("device_memory"), &NcnnTTS::device_memory);
+    ClassDB::bind_method(D_METHOD("set_shader_cache", "path"), &NcnnTTS::set_shader_cache);
+    ClassDB::bind_method(D_METHOD("shader_cache"), &NcnnTTS::shader_cache);
 
     ADD_PROPERTY(PropertyInfo(Variant::INT, "seed"), "set_seed", "get_seed");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "device"), "set_device", "get_device");
 
     ADD_SIGNAL(MethodInfo("synthesised",
             PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "samples"),

@@ -1,6 +1,7 @@
 #ifndef NCNN_TTS_H
 #define NCNN_TTS_H
 
+#include "ncnn_device.h"
 #include "ncnn_graph.h"
 
 #include <godot_cpp/classes/ref_counted.hpp>
@@ -96,6 +97,10 @@ protected:
     // its own -- a length regulator, a front end computed by hand -- across the same number.
     int threads = 1;
 
+    // Which device was asked for, and which the graphs got. A family reads wants_the_card() as
+    // it prepares each graph -- not all of them win on the card -- and writes back what landed.
+    ncnn_device::Choice device;
+
     // Where the noise comes from. Zero is a different voice on every call, which is what a
     // game wants; anything else is the same sentence twice, which is what a gate needs.
     uint64_t seed = 0;
@@ -128,6 +133,48 @@ public:
     ~NcnnTTS();
 
     bool load(const String &model_dir, int num_threads);
+
+    // Which device the graphs are asked for, set before load() and read at it. "gpu" or "cpu";
+    // a machine with no device loads on the processor whatever this says, and device_used()
+    // is what actually happened.
+    void set_device(const String &word);
+    String get_device() const;
+    String device_used() const;
+
+    // The driver's own name for the card the graphs are on, or "" from graphs on the processor.
+    // Two cards in one machine are two different answers, so a row that names one asks here.
+    String device_name() const;
+
+    // Which card the addon picked and what the driver calls it, whatever this holder has loaded.
+    // They are about the machine rather than about these graphs: a host points another library at
+    // this very card with the index, and a check holds the name against what that library reports.
+    int chosen_card_index() const;
+    String chosen_card_name() const;
+
+    // The PCI address of that card -- "0000:c1:00.0" -- or "" where the driver reports
+    // none. It is what another library in this process is matched against: a name is shared
+    // by two cards of a model, and an index is a position each library walks for itself.
+    String device_identity() const;
+
+    // The card a host wants, by that same address, or an empty word to rank one here. It is
+    // process-wide and it is read once: whichever holder loads first names the card for every
+    // graph in this library, exactly as it names the shader file for them.
+    void set_device_address(const String &p_address);
+
+    // Why the card was asked for and the processor got the graphs, as one sentence, or "" where
+    // nothing went wrong: the request was met, or the processor was what was asked for. It is
+    // the build, the driver or the device, and it says which.
+    String device_problem() const;
+
+    // What the card has free and in total, for the meter that gathers a machine's own line.
+    // Empty from a voice on the processor and from a machine with no device.
+    Dictionary device_memory() const;
+
+    // Where the compiled shaders are kept between runs, as a path the C library can open. It is
+    // the host's own location and it is process-wide: the recogniser, the voice, the picture
+    // model and the runner share one cache, so whichever loads first names the file for all.
+    void set_shader_cache(const String &path);
+    String shader_cache() const;
 
     // One sentence of symbol ids to samples, on the calling thread. Empty is a sentence that
     // was refused, and last_problem() says why.

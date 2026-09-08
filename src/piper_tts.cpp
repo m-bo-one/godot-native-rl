@@ -307,12 +307,21 @@ bool PiperTTS::_load_graphs(const String &folder, int num_threads) {
         return false;
     }
 
+    // Where the row says, at single precision, and the processor for the graphs carrying a layer
+    // written in this file: a layer with no shader runs on the processor inside a net on the card
+    // and the blobs around it wander, so one sentence comes back at two lengths over three runs.
+    // Half precision there lengthens it by a frame. Both measured, in the addon's caveats.
+    const NcnnGraph::Options wherever(NcnnGraph::Options::SINGLE,
+            NcnnGraph::Options::wanted(device.wants_the_card()));
+    const NcnnGraph::Options processor(NcnnGraph::Options::HALF,
+            NcnnGraph::Options::PROCESSOR);
+
     // The two modules pnnx was told to keep whole are registered before the structure is
     // parsed: register_custom_layer after load_param finds the layer already refused.
-    enc_p.prepare(num_threads);
+    enc_p.prepare(num_threads, processor);
     enc_p.net.register_custom_layer(REL_K, RelativeEmbeddingsK_layer_creator);
     enc_p.net.register_custom_layer(REL_V, RelativeEmbeddingsV_layer_creator);
-    dp.prepare(num_threads);
+    dp.prepare(num_threads, processor);
     dp.net.register_custom_layer(SPLINE, PiecewiseRationalQuadratic_layer_creator);
 
     struct Part {
@@ -333,12 +342,16 @@ bool PiperTTS::_load_graphs(const String &folder, int num_threads) {
             return false;
         }
         if (!part.prepared) {
-            part.graph->prepare(num_threads);
+            part.graph->prepare(num_threads, wherever);
         }
         if (!part.graph->read(folder.path_join(param_name), folder.path_join(bin_name))) {
             return false;
         }
     }
+
+    // What the graphs got, read off the decoder: it is the one that dominates a sentence, and
+    // every graph of this voice was prepared for the same device, so one answers for all.
+    device.landed_on(dec.runs_on_gpu());
 
     // What the decoder takes says whether this export has voices: a single-voice model takes
     // the sampled sequence alone, a multi-voice one takes the speaker embedding beside it.
@@ -353,10 +366,12 @@ bool PiperTTS::_load_graphs(const String &folder, int num_threads) {
     if (emb_param.is_empty() || emb_bin.is_empty()) {
         return false;
     }
-    return emb_g.load(folder.path_join(emb_param), folder.path_join(emb_bin), num_threads);
+    emb_g.prepare(num_threads, processor);
+    return emb_g.read(folder.path_join(emb_param), folder.path_join(emb_bin));
 }
 
 void PiperTTS::_unload_graphs() {
+    device.landed_on(false);
     emb_g.clear();
     enc_p.clear();
     dp.clear();
