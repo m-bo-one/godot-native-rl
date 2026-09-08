@@ -171,6 +171,13 @@ protected:
     std::vector<Step> schedule;
     std::vector<std::pair<int, int>> sizes;
 
+    // The folder's own schedule as the manifest wrote it, kept so an override can be given back.
+    // Written once at the load and read by nothing else: the loop runs the four fields above.
+    std::vector<Step> manifest_schedule;
+    Scheduler manifest_scheduler = SCHEDULER_EULER;
+    float manifest_guidance = 1.0f;
+    float manifest_init_noise_sigma = 1.0f;
+
     // The three halves a family supplies. Each answers false with a sentence in `problem` --
     // naming the file or the size it could not find, because "the model did not load" sends
     // the next person to a folder listing. All run with the busy flag held and the lock taken.
@@ -263,12 +270,36 @@ public:
 
     // One prompt to one picture, on the calling thread. A null reference is a picture that was
     // refused, and last_problem() says why. A seed of zero is drawn from the clock.
-    Ref<Image> generate(const String &prompt, int64_t seed, int width, int height);
+    //
+    // The negative is what the picture is steered away from, and it is last and optional so that
+    // every caller written against the four-argument call keeps working unchanged. It reaches
+    // the network only where the folder asks for guidance above one: with guidance of one there
+    // is no second pass for it to steer and the words are ignored rather than refused.
+    Ref<Image> generate(const String &prompt, int64_t seed, int width, int height,
+            const String &negative = String());
 
     // The same on a worker, answered by the picture_ready or failed signal on the main thread.
     // False is a turn that never started: the graphs are held by a picture nobody cancelled,
     // or the thread could not be made.
-    bool generate_async(const String &prompt, int64_t seed, int width, int height);
+    bool generate_async(const String &prompt, int64_t seed, int width, int height,
+            const String &negative = String());
+
+    // The arithmetic every picture from here on is joined by, in place of the manifest's own: one
+    // row per step, the road they are joined by, how hard the prompt is weighed against the
+    // negative, and what the first latent is drawn at. It is the whole of what the loop reads, and
+    // it is set rather than passed per call because a caller that changes it changes it for a run
+    // rather than for a frame.
+    //
+    // An empty `rows` puts the folder's own schedule back, which is what a host that asked for
+    // eight steps once and wants the folder's four again calls. The manifest is the default and
+    // survives here untouched: a folder loaded and never told otherwise draws what it always drew.
+    //
+    // False with last_problem() set is a schedule that was refused -- a road this library does not
+    // run, a row that is not a row, or a picture already in flight, because the loop reads these
+    // fields at every step and moving them under a running generation is a different picture from
+    // the one that was asked for.
+    bool set_schedule(const Array &rows, const String &road, double guidance_wanted,
+            double first_latent_sigma);
 
     // Throws away the answer to the picture in flight without waiting for it. Nothing is
     // emitted for that turn, and the next generate_async() joins what is left of it rather
@@ -333,9 +364,11 @@ private:
     static void _apply_step(float *sample, const float *predicted, int count, Scheduler road,
             const Step &step, bool last, T2INoise &noise);
 
-    Ref<Image> make(const String &prompt, uint64_t seed, int width, int height, String &problem);
-    Ref<Image> run(const String &prompt, uint64_t seed, int width, int height, String &said);
-    void work(String prompt, uint64_t seed, int width, int height, int64_t at);
+    Ref<Image> make(const String &prompt, const String &negative, uint64_t seed, int width,
+            int height, String &problem);
+    Ref<Image> run(const String &prompt, const String &negative, uint64_t seed, int width,
+            int height, String &said);
+    void work(String prompt, String negative, uint64_t seed, int width, int height, int64_t at);
     void deliver(int64_t at);
     void join_worker();
 };
