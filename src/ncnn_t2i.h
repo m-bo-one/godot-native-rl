@@ -171,6 +171,13 @@ protected:
     std::vector<Step> schedule;
     std::vector<std::pair<int, int>> sizes;
 
+    // The folder's own schedule as the manifest wrote it, kept so an override can be given back.
+    // Written once at the load and read by nothing else: the loop runs the four fields above.
+    std::vector<Step> manifest_schedule;
+    Scheduler manifest_scheduler = SCHEDULER_EULER;
+    float manifest_guidance = 1.0f;
+    float manifest_init_noise_sigma = 1.0f;
+
     // The three halves a family supplies. Each answers false with a sentence in `problem` --
     // naming the file or the size it could not find, because "the model did not load" sends
     // the next person to a folder listing. All run with the busy flag held and the lock taken.
@@ -276,6 +283,23 @@ public:
     // or the thread could not be made.
     bool generate_async(const String &prompt, int64_t seed, int width, int height,
             const String &negative = String());
+
+    // The arithmetic every picture from here on is joined by, in place of the manifest's own: one
+    // row per step, the road they are joined by, how hard the prompt is weighed against the
+    // negative, and what the first latent is drawn at. It is the whole of what the loop reads, and
+    // it is set rather than passed per call because a caller that changes it changes it for a run
+    // rather than for a frame.
+    //
+    // An empty `rows` puts the folder's own schedule back, which is what a host that asked for
+    // eight steps once and wants the folder's four again calls. The manifest is the default and
+    // survives here untouched: a folder loaded and never told otherwise draws what it always drew.
+    //
+    // False with last_problem() set is a schedule that was refused -- a road this library does not
+    // run, a row that is not a row, or a picture already in flight, because the loop reads these
+    // fields at every step and moving them under a running generation is a different picture from
+    // the one that was asked for.
+    bool set_schedule(const Array &rows, const String &road, double guidance_wanted,
+            double first_latent_sigma);
 
     // Throws away the answer to the picture in flight without waiting for it. Nothing is
     // emitted for that turn, and the next generate_async() joins what is left of it rather

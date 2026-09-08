@@ -360,6 +360,74 @@ bool NcnnT2I::_read_manifest(const String &folder, Dictionary &manifest, String 
             return false;
         }
     }
+
+    // What the folder itself asked for, kept beside what is in force. An override hands these
+    // back, so a host can always return to the arithmetic the export was gated against.
+    manifest_schedule = schedule;
+    manifest_scheduler = scheduler;
+    manifest_guidance = guidance;
+    manifest_init_noise_sigma = init_noise_sigma;
+    return true;
+}
+
+
+bool NcnnT2I::set_schedule(const Array &rows, const String &road, double guidance_wanted,
+        double first_latent_sigma) {
+    // The loop reads these four fields at every step, so moving them under a running generation
+    // would finish a picture nobody asked for. Refused rather than queued, as a second prompt is.
+    if (is_busy()) {
+        problem = String("Govorilka: a picture is still being drawn, so the schedule was left "
+                         "alone. Wait for it or cancel it, then set the schedule again.");
+        return false;
+    }
+    if (rows.is_empty()) {
+        if (manifest_schedule.empty()) {
+            problem = String("Govorilka: there is no folder loaded, so there is no schedule to "
+                             "put back. Load a model first.");
+            return false;
+        }
+        schedule = manifest_schedule;
+        scheduler = manifest_scheduler;
+        guidance = manifest_guidance;
+        init_noise_sigma = manifest_init_noise_sigma;
+        return true;
+    }
+
+    Scheduler wanted;
+    if (road == "euler") {
+        wanted = SCHEDULER_EULER;
+    } else if (road == "lcm") {
+        wanted = SCHEDULER_LCM;
+    } else {
+        problem = String("Govorilka: \"{0}\" is not a scheduler this addon has. It runs \"euler\" "
+                         "and \"lcm\", and which one a schedule takes is not a guess.")
+                          .format(Array::make(road));
+        return false;
+    }
+    if (!(first_latent_sigma > 0.0)) {
+        problem = String("Govorilka: a first latent drawn at {0} is not a picture. It is what the "
+                         "seeded noise is multiplied by, so it is above zero or the frame is "
+                         "black.")
+                          .format(Array::make(first_latent_sigma));
+        return false;
+    }
+
+    std::vector<Step> wanted_rows;
+    wanted_rows.reserve(rows.size());
+    for (int i = 0; i < rows.size(); i++) {
+        if (rows[i].get_type() != Variant::DICTIONARY) {
+            problem = String("Govorilka: step {0} of the schedule is not a row of numbers, so "
+                             "there is nothing to run it by.")
+                              .format(Array::make(i));
+            return false;
+        }
+        wanted_rows.push_back(_step_of(rows[i]));
+    }
+
+    schedule.swap(wanted_rows);
+    scheduler = wanted;
+    guidance = (float)guidance_wanted;
+    init_noise_sigma = (float)first_latent_sigma;
     return true;
 }
 
@@ -1106,6 +1174,11 @@ void NcnnT2I::_bind_methods() {
     ClassDB::bind_method(
             D_METHOD("generate_async", "prompt", "seed", "width", "height", "negative"),
             &NcnnT2I::generate_async, DEFVAL(String()));
+    // The arithmetic in place of the manifest's, for a host that offers a step count or a
+    // guidance of its own. Empty rows put the folder's back, so a game can always return to what
+    // the export was gated against.
+    ClassDB::bind_method(D_METHOD("set_schedule", "rows", "road", "guidance", "first_latent_sigma"),
+            &NcnnT2I::set_schedule);
     ClassDB::bind_method(D_METHOD("cancel"), &NcnnT2I::cancel);
     ClassDB::bind_method(D_METHOD("deliver_pending"), &NcnnT2I::deliver_pending);
     ClassDB::bind_method(D_METHOD("wait_for_picture", "timeout_ms"), &NcnnT2I::wait_for_picture);
